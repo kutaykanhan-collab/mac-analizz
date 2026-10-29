@@ -182,7 +182,16 @@ def main():
             skipped += 1
 
     reports.sort(key=lambda x: (x["tarih"], x["saat"] or "99:99", x["turnuva"]))
+    diag = {
+        "sonuc_satir": {c: int((results.Div == c).sum()) for c in LEAGUES},
+        "fikstur_toplam": int(len(fixtures)),
+        "fikstur_tarihler": sorted({str(x.date()) for x in fixtures.Date})[:10] if not fixtures.empty else [],
+        "elo_toplam": int(len(elo)),
+        "elo_gun_icinde": int(sum(1 for x in elo.Date if x.date() in days)) if not elo.empty else 0,
+        "elo_eslesen": len(elo_idx),
+    }
     out = {
+        "kaynak": diag,
         "olusturma": datetime.now(tz).strftime("%d.%m.%Y %H:%M"),
         "gunler": sorted(d.isoformat() for d in days),
         "mac_sayisi": len(reports),

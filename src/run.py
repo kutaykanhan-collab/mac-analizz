@@ -56,7 +56,8 @@ def main():
 
     print(f"[2/4] Modeller kuruluyor ({len(results)} maç)")
     ctx = Context(results, ref, elo)
-    match = build_matcher(ctx.team_league)
+    team_country = {t: LEAGUES[lg][1] for t, lg in ctx.team_league.items()}
+    match = build_matcher(ctx.team_league, team_country)
     ctx.calibrate_uefa(uefa, match)
     print(f"      UEFA kalibrasyonu: {ctx.uefa['n']} maç")
 
@@ -78,27 +79,29 @@ def main():
     by_pair = {(fx["home"], fx["away"]): fx for fx in bulletin}
 
     # Maçkolik bülteni: iddaa oranlarını ekle, eksik lig maçlarını ve kupaları al
-    no_data = []
+    no_data, unmatched_league = [], []
     for mm in mack:
         if mm["date"] not in days:
             continue
-        h, a = match(mm["home"]), match(mm["away"])
+        h, a = match(mm["home"], mm["code"]), match(mm["away"], mm["code"])
         if (h, a) in by_pair:
             by_pair[(h, a)].update({"iddaa": mm["odds"], "label_home": mm["home"], "label_away": mm["away"]})
             continue
         lg_h, lg_a = ctx.team_league.get(h), ctx.team_league.get(a)
         title = f"{mm['country']} {mm['league']}"
+        is_cup = mm["uefa"] or mm["cup"] or "Kupa" in mm["league"]
         if not (h or a):
-            no_data.append({"mac": f"{mm['home']} - {mm['away']}", "turnuva": title, "saat": mm["time"]})
+            if is_cup:  # takip dışı lig maçları zaten gereksiz, listelenmez
+                no_data.append({"mac": f"{mm['home']} - {mm['away']}", "turnuva": title, "saat": mm["time"]})
             continue
         if mm["uefa"]:
             ctype = "avrupa"
-        elif mm["cup"] or "Kupa" in mm["league"]:
+        elif is_cup:
             ctype = "kupa"
         elif h and a and lg_h == lg_a:
             ctype = "lig"
         else:
-            no_data.append({"mac": f"{mm['home']} - {mm['away']}", "turnuva": title, "saat": mm["time"]})
+            unmatched_league.append(f"{mm['home']} - {mm['away']} ({title})")
             continue
         fx = {
             "date": mm["date"].isoformat(), "time": mm["time"],
@@ -163,6 +166,7 @@ def main():
         "diger_lig_gucu": round(ctx.uefa["S_other"], 2),
         "atlanan_maclar": skipped,
         "mackolik_mac": len(mack),
+        "eslesmeyen_lig_maci": unmatched_league,
     }
     out = {
         "kaynak": diag,

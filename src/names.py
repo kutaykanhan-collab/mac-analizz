@@ -62,7 +62,11 @@ ALIASES = {
     "Greuther Fürth": "Greuther Furth", "1. FC Nürnberg": "Nurnberg", "Hertha BSC": "Hertha",
     "Hannover 96": "Hannover", "1. FC Kaiserslautern": "Kaiserslautern", "Eintracht Braunschweig": "Braunschweig",
     "Arminia Bielefeld": "Bielefeld", "VfL Bochum": "Bochum", "Dynamo Dresden": "Dresden",
-    "Hellas Verona": "Verona", "Pau": "Pau FC", "Red Star FC": "Red Star", "Queens Park Rangers": "QPR",
+    "Hellas Verona": "Verona", "SV Zulte Waregem": "Waregem", "Zulte Waregem": "Waregem",
+    "Stade Lavallois": "Laval", "Energie Cottbus": "Cottbus", "Royal Antwerp FC": "Antwerp",
+    "Standard Liege": "Standard", "Standard Liège": "Standard", "Sporting Charleroi": "Charleroi",
+    "KV Mechelen": "Mechelen", "Cercle Brugge KSV": "Cercle Brugge", "OH Leuven": "Oud-Heverlee Leuven",
+    "Westerlo": "Westerlo", "Sint-Truidense VV": "St Truiden", "Dender": "Dender", "Pau": "Pau FC", "Red Star FC": "Red Star", "Queens Park Rangers": "QPR",
     "West Bromwich Albion": "West Brom", "Sheffield Utd": "Sheffield United",
 }
 
@@ -86,11 +90,14 @@ def norm(s):
     return re.sub(r"[^a-z0-9]", "", s)
 
 
-def build_matcher(teams):
+def build_matcher(teams, team_country=None):
+    """team_country: {takım: ülke kodu}. Verilirse aynı ülke içinde kelime bazlı eşleştirme
+    de yapılır (ör. "SV Zulte Waregem" -> "Waregem", "Energie Cottbus" -> "Cottbus")."""
     teams = set(teams)
     by_norm = {norm(t): t for t in teams}
+    team_country = team_country or {}
 
-    def match(name):
+    def match(name, country=None):
         if not name:
             return None
         if name in teams:
@@ -101,6 +108,15 @@ def build_matcher(teams):
         if n in by_norm:
             return by_norm[n]
         hit = difflib.get_close_matches(n, list(by_norm), n=1, cutoff=0.84)
-        return by_norm[hit[0]] if hit else None
+        if hit:
+            return by_norm[hit[0]]
+        if country:
+            words = [norm(w) for w in re.split(r"[\s\-/]+", str(name))]
+            words = [w for w in words if len(w) >= 4]
+            pool = [t for t in teams if team_country.get(t) == country]
+            hits = [t for t in pool if norm(t) in words]
+            if len(hits) == 1:
+                return hits[0]
+        return None
 
     return match

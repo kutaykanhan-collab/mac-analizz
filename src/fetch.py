@@ -144,7 +144,14 @@ MACKOLIK_COUNTRIES = {
     "İskoçya": "SCO",
 }
 UEFA_WORDS = ("Şampiyonlar Ligi", "Avrupa Ligi", "Konferans Ligi")
-SKIP_WORDS = ("Kadın", "U17", "U19", "U20", "U21", "U23", "Gençler", "Genç", "Rezerv", "Hazırlık", "Mladinska")
+SKIP_WORDS = ("Kadın", "U17", "U19", "U20", "U21", "U23", "Gençler", "Genç", "Rezerv", "Reserve", "Hazırlık",
+              "Mladinska", "Primavera", "Premier Lig Kupası", "Bölgesel", "Amatör")
+
+
+def _reserve_team(name):
+    n = f" {name} "
+    return any(t in n for t in (" U17 ", " U18 ", " U19 ", " U20 ", " U21 ", " U23 ", " II ", " B ", "(K)")) \
+        or name.startswith("Jong ")
 
 
 def _f(x):
@@ -191,7 +198,7 @@ def load_mackolik(days, offline=False):
                 info = m[36]
                 country, league, cup = info[1], info[3], info[7]
                 full = f"{country} {league}"
-                if any(w in full for w in SKIP_WORDS) or "(K)" in str(m[2]):
+                if any(w in full for w in SKIP_WORDS) or _reserve_team(str(m[2])) or _reserve_team(str(m[4])):
                     continue
                 is_uefa = (country.startswith("UEFA") or country.startswith("Avrupa")) and \
                     any(w in full for w in UEFA_WORDS)

@@ -48,6 +48,9 @@ for k, u in others.items():
         if "mackolik" in k:
             info["kupa_gecer"] = ("Kupa" in t) or ("Ziraat" in t)
         out["diger"][k] = info
+        if k in ("mackolik_livedata", "fotmob") and r.ok:
+            Path("data/raw").mkdir(parents=True, exist_ok=True)
+            Path(f"data/raw/probe_{k}.json").write_text(t, encoding="utf-8")
     except Exception as e:
         out["diger"][k] = {"hata": str(e)[:150]}
 Path("docs/data").mkdir(parents=True, exist_ok=True)

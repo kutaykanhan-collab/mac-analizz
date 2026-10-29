@@ -1,13 +1,12 @@
 """Ham veriyi indirir: lig maç sonuçları, günün fikstürü, ClubElo fikstürü (kupalar için)."""
 import io
-import re
 import time
 from pathlib import Path
 
 import pandas as pd
 import requests
 
-from config import BASE_URL, CLUBELO_FIXTURES_URL, FIXTURES_URL, LEAGUES
+from config import BASE_URL, CLUBELO_RATINGS_URL, FIXTURES_URL, LEAGUES, UEFA_FEED_URLS, UEFA_FEEDS
 
 RAW = Path(__file__).resolve().parent.parent / "data" / "raw"
 HEADERS = {"User-Agent": "mac-analiz/1.0 (kisisel istatistik projesi)"}
@@ -84,41 +83,53 @@ def load_fixtures(offline=False):
     return _parse_dates(df)
 
 
-def load_clubelo(offline=False):
-    """ClubElo fikstürü. Kupa ve Avrupa maçlarını bulmak + Elo olasılığı için.
-    Dönen tablo: Date, Country, Home, Away, pH, pD, pA"""
-    path = RAW / "clubelo_fixtures.csv"
+def load_uefa(today, offline=False):
+    """UEFA kupa fikstürleri (fixturedownload.com). Dönen tablo:
+    Date (UTC zaman damgası), Comp, Home, Away, Round"""
+    import json
+    y = today.year if today.month >= 7 else today.year - 1
+    rows = []
+    for comp, slug_t in UEFA_FEEDS.items():
+        slug = slug_t.format(y=y)
+        path = RAW / f"uefa_{slug}.json"
+        if not offline:
+            for u in UEFA_FEED_URLS:
+                raw = _get(u.format(slug=slug))
+                if raw and raw.lstrip()[:1] in (b"[", b"{"):
+                    path.write_bytes(raw)
+                    break
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_bytes().decode("utf-8-sig"))
+        except Exception:
+            continue
+        if isinstance(data, dict):
+            data = data.get("matches") or data.get("Matches") or []
+        for m in data:
+            d = m.get("DateUtc") or m.get("Date")
+            h, a = m.get("HomeTeam"), m.get("AwayTeam")
+            if not (d and h and a) or "To be" in str(h) or "TBD" in str(h):
+                continue
+            rows.append({"Date": d, "Comp": comp, "Home": h, "Away": a,
+                         "Round": m.get("RoundNumber"), "Group": m.get("Group")})
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    df["Date"] = pd.to_datetime(df["Date"], utc=True, errors="coerce")
+    return df.dropna(subset=["Date"])
+
+
+def load_elo_ratings(today, offline=False):
+    """ClubElo güç puanları {kulüp: elo}. Alınamazsa boş sözlük."""
+    path = RAW / "clubelo_ratings.csv"
     if not offline:
-        raw = _get(CLUBELO_FIXTURES_URL)
-        if raw:
+        raw = _get(CLUBELO_RATINGS_URL.format(date=today.isoformat()))
+        if raw and raw[:4] in (b"Rank", b"\xef\xbb\xbfR"):
             path.write_bytes(raw)
     if not path.exists():
-        return pd.DataFrame()
+        return {}
     df = _read_csv(path.read_bytes())
-    need = {"Date", "Home", "Away"}
-    if df.empty or not need.issubset(df.columns):
-        return pd.DataFrame()
-
-    # Gol farkı sütunlarından 1-X-2 olasılığı çıkar (GD<-5, GD=-1, GD=0, GD>5 ...)
-    pos, neg, zero = [], [], []
-    for c in df.columns:
-        m = re.match(r"GD([<>=])(-?\d+)", c)
-        if not m:
-            continue
-        op, v = m.group(1), int(m.group(2))
-        if op == ">" or (op == "=" and v > 0):
-            pos.append(c)
-        elif op == "<" or (op == "=" and v < 0):
-            neg.append(c)
-        else:
-            zero.append(c)
-    if pos and neg and zero:
-        df["pH"] = df[pos].sum(axis=1)
-        df["pD"] = df[zero].sum(axis=1)
-        df["pA"] = df[neg].sum(axis=1)
-    else:
-        df["pH"] = df["pD"] = df["pA"] = float("nan")
-    if "Country" not in df.columns:
-        df["Country"] = ""
-    df = df[["Date", "Country", "Home", "Away", "pH", "pD", "pA"]]
-    return _parse_dates(df)
+    if not {"Club", "Elo"}.issubset(df.columns):
+        return {}
+    return dict(zip(df.Club, pd.to_numeric(df.Elo, errors="coerce")))

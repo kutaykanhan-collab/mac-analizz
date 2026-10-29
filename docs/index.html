@@ -137,7 +137,7 @@ async function load() {
   route();
 }
 
-function hasValue(m) { return (m.oranlar || []).some(o => o.durum === "Değerli"); }
+function hasValue(m) { return (m.oranlar || []).some(o => o.durum === "Model yüksek görüyor"); }
 
 function filtered() {
   const q = F.q.toLowerCase();
@@ -155,7 +155,7 @@ function render() {
   let html = `<div class="bar">
     <input class="search" id="q" placeholder="Takım ya da lig ara" value="${esc(F.q)}">
     <div class="chips">
-      <span class="chip ${F.sadeceDeger ? "on" : ""}" data-t="deger">Değerli oran</span>
+      <span class="chip ${F.sadeceDeger ? "on" : ""}" data-t="deger">Model farkı</span>
       <span class="chip ${F.derbi ? "on" : ""}" data-t="derbi">Derbi</span>
       ${ligs.map(l => `<span class="chip ${F.lig === l ? "on" : ""}" data-l="${esc(l)}">${esc(l)}</span>`).join("")}
     </div></div>`;
@@ -166,14 +166,14 @@ function render() {
     if (m.tarih !== day) { day = m.tarih; html += `<div class="day">${dayName(day)}</div>`; }
     const p = m.olasiliklar, b = (m.en_degerli || [])[0];
     html += `<div class="card" data-id="${esc(m.id)}">
-      <div class="meta"><span>${esc(m.turnuva)}${m.derbi.var ? '<span class="tag derbi">Derbi</span>' : ""}${hasValue(m) ? '<span class="tag val">Değer</span>' : ""}</span><b>${m.saat || "Saat ?"}</b></div>
+      <div class="meta"><span>${esc(m.turnuva)}${m.derbi.var ? '<span class="tag derbi">Derbi</span>' : ""}${hasValue(m) ? '<span class="tag val">Fark</span>' : ""}</span><b>${m.saat || "Saat ?"}</b></div>
       <div class="teams"><div class="t">${esc(m.ev)}</div><div class="xg">xG ${m.beklenen_gol.ev} – ${m.beklenen_gol.dep}</div><div class="t r">${esc(m.dep)}</div></div>
       <div class="pbar"><i style="width:${p["1"]}%;background:var(--home)"></i><i style="width:${p["X"]}%;background:var(--draw)"></i><i style="width:${p["2"]}%;background:var(--away)"></i></div>
       <div class="plab"><span>1 · %${p["1"]}</span><span>X · %${p["X"]}</span><span>2 · %${p["2"]}</span></div>
       <div class="picks">${(m.en_degerli || []).map(x => `<span class="pick"><span class="d" style="background:${riskColor(x.risk)}"></span>${esc(x.bahis)} · %${x.olasilik}</span>`).join("")}</div>
     </div>`;
   }
-  html += `<div class="foot">${DATA.mac_sayisi || 0} maç · istatistik modeli · kazanç garantisi yoktur, sorumlu oyna.</div>`;
+  html += `<div class="foot">${DATA.mac_sayisi || 0} maç · istatistik modeli + piyasa · kazanç garantisi yoktur, sorumlu oyna.</div>`;
   main.innerHTML = html;
   $("#q").oninput = e => { F.q = e.target.value; const pos = e.target.selectionStart; render(); const q = $("#q"); q.focus(); q.setSelectionRange(pos, pos); };
   main.querySelectorAll(".chip").forEach(c => c.onclick = () => {
@@ -186,13 +186,20 @@ function render() {
 }
 
 function renderTest(main) {
-  if (!BT || !BT.satirlar) { main.innerHTML = `<div class="empty">Henüz test sonucu yok.</div>`; return; }
-  const rows = BT.satirlar;
+  if (!BT || !BT.genel) { main.innerHTML = `<div class="empty">Henüz test sonucu yok. Pazartesi otomatik çalışır.</div>`; return; }
+  const sg = BT.sinyal || {};
   main.innerHTML = `<div class="sec"><h3>Geriye dönük test</h3>
-    <p style="color:var(--muted);font-size:13px;margin-bottom:10px">Son ${BT.hafta} hafta. Model her hafta sadece o güne kadarki veriyle kuruldu, sonra o haftanın maçları tahmin edildi. <b>İsabet</b>: en yüksek olasılıklı seçeneğin tutma oranı. <b>ROI</b>: değerli işaretlenen bahislere 1'er birim yatırılsaydı getiri.</p>
-    <table><tr><th>Kapsam</th><th>Pazar</th><th>Maç</th><th>İsabet</th><th>Değer bahis</th><th>ROI</th></tr>
-    ${rows.map(r => `<tr><td>${esc(r.kapsam)}</td><td>${esc(r.pazar)}</td><td>${r.mac}</td><td>%${r.isabet}</td><td>${r.deger_bahis}</td><td class="${r.roi > 0 ? "good" : r.roi < 0 ? "bad" : ""}">${r.roi === null ? "–" : "%" + r.roi}</td></tr>`).join("")}
-    </table><div class="foot">Güncelleme ${esc(BT.olusturma)}</div></div>`;
+    <p style="color:var(--muted);font-size:13px;margin-bottom:10px">Son ${BT.hafta} hafta, ${BT.genel[0].mac} maç. Model her hafta sadece o güne kadarki veriyle kuruldu ve o haftanın maçlarını tahmin etti.</p>
+    <table><tr><th>Yöntem</th><th>MS isabet</th><th>2.5 isabet</th><th>Hata (Brier)</th></tr>
+    ${BT.genel.map(r => `<tr><td>${esc(r.yontem)}</td><td>%${r.ms_isabet}</td><td>%${r.ust_isabet}</td><td>${r.ms_brier}</td></tr>`).join("")}</table>
+    <p style="color:var(--muted);font-size:12px;margin-top:8px">Brier düşük olan daha iyi. Sitede gösterilen olasılık "Model + piyasa" satırıdır.</p></div>
+  <div class="sec"><h3>Model farkına oynasaydık</h3>
+    <dl class="kv"><dt>Bahis sayısı</dt><dd>${v(sg.bahis)}</dd><dt>Tutan</dt><dd>%${v(sg.kazanan)}</dd><dt>Getiri (ROI)</dt><dd class="${sg.roi > 0 ? "good" : "bad"}"><b>%${v(sg.roi)}</b></dd></dl>
+    <p style="color:var(--muted);font-size:12px;margin-top:8px">Model, oranın verdiğinden %4+ yüksek olasılık gördüğünde 1 birim oynandığı varsayıldı. ${sg.roi < 0 ? "Sonuç negatif: bahis piyasası şu an bu modelden daha iyi bilgiye sahip. \"Fark\" etiketlerini tek başına oynama sebebi sayma." : "Sonuç pozitif, ama örneklem küçükse şans olabilir."}</p></div>
+  <div class="sec"><h3>Lig bazında MS isabeti</h3>
+    <table><tr><th>Lig</th><th>Maç</th><th>Model</th><th>Piyasa</th><th>Nihai</th></tr>
+    ${(BT.ligler || []).map(r => `<tr><td>${esc(r.lig)}</td><td>${r.mac}</td><td>%${r.model}</td><td>%${r.piyasa}</td><td>%${r.nihai}</td></tr>`).join("")}</table>
+    <div class="foot">Güncelleme ${esc(BT.olusturma)}</div></div>`;
 }
 
 function formTable(m, which) {
@@ -269,9 +276,9 @@ function showDetail(id) {
       ${recRow("Korner önerisi", o.korner)}</div>
 
     <div class="sec"><h3>Oran Değerlendirmesi</h3>
-      ${m.oranlar.length ? `<table><tr><th>Pazar</th><th>Oran</th><th>Piyasa</th><th>Model</th><th>Değer</th></tr>
-      ${m.oranlar.filter(x => x.oran).map(x => `<tr><td>${esc(x.pazar)}</td><td>${x.oran}</td><td>%${x.piyasa}</td><td>%${x.model}</td><td class="${x.durum === "Değerli" ? "good" : x.durum === "Değersiz" ? "bad" : ""}">${x.deger > 0 ? "+" : ""}${x.deger}%</td></tr>`).join("")}</table>
-      <p style="color:var(--muted);font-size:12px;margin-top:8px">${m.oranlar.filter(x => x.marj !== undefined).map(x => esc(x.pazar) + ": %" + x.marj).join(" · ")}. Değer = model olasılığı × oran − 1. +%4 ve üstü değerli sayılır.</p>`
+      ${m.oranlar.length ? `<table><tr><th>Pazar</th><th>Oran</th><th>Piyasa</th><th>Model</th><th>Nihai</th></tr>
+      ${m.oranlar.filter(x => x.oran).map(x => `<tr><td>${esc(x.pazar)}</td><td>${x.oran}</td><td>%${x.piyasa}</td><td class="${x.durum === "Model yüksek görüyor" ? "good" : x.durum === "Model düşük görüyor" ? "bad" : ""}">%${x.model}</td><td><b>%${x.nihai}</b></td></tr>`).join("")}</table>
+      <p style="color:var(--muted);font-size:12px;margin-top:8px">Piyasa: oranlardan çıkan olasılık (${m.oranlar.filter(x => x.marj !== undefined).map(x => "marj %" + x.marj).join(", ")}). Model: sadece istatistik. Nihai: %25 model + %75 piyasa; geçmiş testte en isabetli karışım bu. Yeşil: model piyasadan yüksek görüyor, kırmızı: düşük görüyor.</p>`
       : `<p style="color:var(--muted);font-size:13px">Oran verisi yok. Aşağıdaki adil oranlardan yüksek bir oran bulursan değerli demektir.</p>`}
       <table style="margin-top:10px"><tr><th>Pazar</th><th>Olasılık</th><th>Adil oran</th></tr>
       ${["1", "X", "2", "1X", "X2", "12", "KG Var", "KG Yok", "1.5 Üst", "2.5 Üst", "2.5 Alt", "3.5 Üst", "3.5 Alt"].map(k => `<tr><td>${k.length <= 2 ? "MS " + k : k}</td><td>%${p[k]}</td><td>${(100 / p[k]).toFixed(2)}</td></tr>`).join("")}
@@ -293,7 +300,7 @@ function showDetail(id) {
 
     <div class="sec best"><h3>En Güçlü 2-3 Bahis</h3>
       ${m.en_degerli.map(b => `<div class="rec"><div><div class="v">${esc(b.bahis)}</div><div class="k">${esc(b.tip)}${b.oran ? " · oran " + b.oran + " · değer +" + b.deger + "%" : b.adil_oran ? " · adil oran " + b.adil_oran : ""}</div></div><div class="p">%${b.olasilik}<br>${riskTag(b.risk)}</div></div>`).join("") || `<p class="k">Öne çıkan bahis yok.</p>`}
-      ${(m.surpriz || []).length ? `<p style="color:var(--muted);font-size:12px;margin-top:8px">Sürpriz (düşük olasılık, değerli oran): ${m.surpriz.map(s => `${esc(s.bahis)} @${s.oran} (%${s.olasilik})`).join(", ")}. Yüksek risk.</p>` : ""}
+      ${(m.surpriz || []).length ? `<p style="color:var(--muted);font-size:12px;margin-top:8px">Model farkı: ${m.surpriz.map(s => `${esc(s.bahis)} @${s.oran} (model %${s.olasilik})`).join(", ")}. Dikkat: bu tür farklara oynamak geçmiş testte zarar ettirdi (Model Testi sekmesine bak).</p>` : ""}
     </div>
 
     <div class="sec"><h3>Genel Yorum & Risk</h3>

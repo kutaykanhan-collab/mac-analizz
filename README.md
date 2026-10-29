@@ -7,7 +7,7 @@ Günün bülteni için istatistik modeliyle maç analizi yapan ve sonuçları te
 Her sabah 09:17'de ve öğleden sonra 16:17'de (Türkiye saati):
 
 1. Takip edilen liglerin bu ve geçen sezonki tüm maçlarını indirir (football-data.co.uk).
-2. Günün ve yarının lig fikstürünü oranlarıyla birlikte, kupa ve UEFA maçlarını da ClubElo'dan alır.
+2. Günün ve yarının lig fikstürünü oranlarıyla birlikte alır. UEFA maçlarını fixturedownload.com'dan, takım güç puanlarını ClubElo'dan çeker.
 3. Her maç için modeli çalıştırır ve raporu `docs/data/latest.json` dosyasına yazar.
 4. Telefondaki sayfa bu dosyayı okur.
 
@@ -16,15 +16,17 @@ Her sabah 09:17'de ve öğleden sonra 16:17'de (Türkiye saati):
 | Bölüm | Yöntem |
 |---|---|
 | Gol, 1X2, KG, Üst/Alt, İY | Dixon-Coles Poisson modeli. Takım başına hücum ve savunma gücü, ev sahibi avantajı ve zaman ağırlığı (yakın maçlar daha etkili). |
-| Kupa / UEFA maçları | Elo gücü (ClubElo) ile takımların lig gol profili birleştirilir. |
+| Gol modeli girdisi | %50 gerçek gol + %50 isabetli şuttan beklenen gol. Geçmiş testte saf golden isabetli çıktı. |
+| Nihai olasılık | Oran varsa %25 model + %75 piyasa. Geçmiş testte en isabetli karışım bu. Oran yoksa saf model kullanılır. |
+| UEFA maçları | Lig gücü düzeltmeli gol modeli. ClubElo puanı alınabilirse güç farkını Elo belirler. |
 | Korner, şut, isabetli şut | Lig ortalaması × takımın üretme katsayısı × rakibin izin verme katsayısı. Dağılım lig verisinden ölçülür. |
 | Kart | Aynı model, üstüne hakem katsayısı (hakem verisi olan liglerde), derbi ve kupa çarpanı. |
-| Değer | Model olasılığı × oran − 1. +%4 ve üstü "değerli" sayılır. |
+| Model farkı | Model olasılığı × oran − 1 ≥ %4. Geçmiş testte bu sinyal **kârsız** çıktı (ROI yaklaşık −%10); bilgi amaçlı gösterilir. |
 | Model testi | `backtest.py` geçmiş 30 haftayı, geleceği görmeden yeniden tahmin eder. İsabet ve değerli bahislerin ROI'si hesaplanır. |
 
 ## Takip edilen ligler
 
-Süper Lig, Premier Lig, Championship, La Liga 1-2, Serie A-B, Bundesliga 1-2, Ligue 1-2, Eredivisie, Portekiz, Belçika, Yunanistan, İskoçya. Ayrıca bu liglerdeki takımların ulusal kupa ve UEFA maçları da alınır. İki takımı da bu liglerin dışında olan maçlar atlanır.
+Süper Lig, Premier Lig, Championship, La Liga 1-2, Serie A-B, Bundesliga 1-2, Ligue 1-2, Eredivisie, Portekiz, Belçika, Yunanistan, İskoçya. Ayrıca bu liglerdeki takımların UEFA maçları (Şampiyonlar, Avrupa, Konferans Ligi) da alınır. Ulusal kupalar için ücretsiz güvenilir kaynak bulunamadı. İki takımı da bu liglerin dışında olan maçlar atlanır.
 
 Lig eklemek ya da çıkarmak için `src/config.py` içindeki `LEAGUES` listesini düzenle.
 
@@ -50,13 +52,14 @@ python src/backtest.py --offline
 cd docs && python -m http.server 8000   # tarayıcıda localhost:8000
 ```
 
-İnternetsiz test için: `python tests/make_fake_data.py && python src/run.py --offline --date 2026-10-29`
+İnternetsiz test için: `python src/run.py --offline  (repodaki data/raw ile)`
 
 ## Bilinmesi gerekenler
 
 - **Hakem verisi** ücretsiz kaynakta yalnızca İngiltere liglerinde var. Diğer liglerde kart beklentisi takım ve lig verisine dayanır, raporda bu yazar.
 - **Oyuncu verisi** (sakatlık, ceza, bireysel şut) ücretsiz kaynakta yok. Analiz takım düzeyindedir.
 - **Oranlar** football-data'daki Avrupa bahis şirketlerinin ortalamasıdır, iddaa oranı değildir. Korner ve kart için oran yok. Bu pazarlarda "adil oran" gösterilir; iddaa oranı bundan yüksekse değerli demektir.
-- **Kupa maçlarında** saat bilgisi ve oran yoktur. Form verisi yalnızca lig maçlarından gelir.
-- Takım adı eşleşmezse `src/run.py` içindeki `ALIASES` sözlüğüne ekle (ClubElo adı → football-data adı).
-- Hiçbir model kazanç garantisi vermez. "Model Testi" sekmesindeki ROI'ye bakmadan büyük oynama.
+- **UEFA maçlarında** oran yoktur. Form verisi yalnızca lig maçlarından gelir.
+- football-data fikstür dosyası birkaç gün ileriyi gösterir. Hafta sonu maçları genelde Perşembe-Cuma eklenir.
+- Takım adı eşleşmezse `src/names.py` içindeki `ALIASES` sözlüğüne ekle (diğer kaynaktaki ad → football-data adı).
+- Hiçbir model kazanç garantisi vermez. "Model Testi" sekmesi modelin geçmiş başarısını dürüstçe gösterir; ona bakmadan büyük oynama.

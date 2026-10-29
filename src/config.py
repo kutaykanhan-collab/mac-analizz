@@ -30,12 +30,29 @@ COUNTRY_TR = {
 
 BASE_URL = "https://www.football-data.co.uk/mmz4281/{season}/{code}.csv"
 FIXTURES_URL = "https://www.football-data.co.uk/fixtures.csv"
-CLUBELO_FIXTURES_URL = "http://api.clubelo.com/Fixtures"
+CLUBELO_RATINGS_URL = "http://api.clubelo.com/{date}"
+UEFA_FEEDS = {  # fixturedownload.com ücretsiz fikstür akışı
+    "UEFA Şampiyonlar Ligi": "champions-league-{y}",
+    "UEFA Avrupa Ligi": "europa-league-{y}",
+    "UEFA Konferans Ligi": "conference-league-{y}",
+}
+UEFA_FEED_URLS = ["https://fixturedownload.com/feed/json/{slug}", "https://fixturedownload.com/view/json/{slug}"]
+
+# Ligler arası maçlar için yaklaşık lig gücü (log gol ölçeği, Premier Lig = 0).
+# Elo verisi alınamazsa kullanılır. UEFA ülke katsayılarına göre kabaca ayarlı.
+LEAGUE_STRENGTH = {
+    "E0": 0.0, "SP1": -0.05, "I1": -0.07, "D1": -0.07, "F1": -0.13,
+    "P1": -0.22, "N1": -0.22, "B1": -0.28, "T1": -0.28, "G1": -0.36, "SC0": -0.38,
+    "E1": -0.30, "SP2": -0.42, "I2": -0.45, "D2": -0.38, "F2": -0.47,
+}
 
 TIMEZONE = "Europe/Istanbul"
 DAYS_AHEAD = 1          # 0 = sadece bugün, 1 = bugün + yarın
 FORM_N = 15             # form analizi için son maç sayısı
 TIME_DECAY = 0.0030     # gol modelinde günlük ağırlık azalması (~230 gün yarı ömür)
+RIDGE = 3.0             # takım güçlerini lig ortalamasına çekme (geçmiş testte en iyi)
+SOT_MIX = 0.5           # takım gücü: %50 gerçek gol + %50 isabetli şuttan beklenen gol
+MODEL_WEIGHT = 0.25     # oran varsa: nihai olasılık = %25 model + %75 piyasa (geçmiş testte en isabetli karışım)
 SHRINK_K = 6            # az maçlı takımları lig ortalamasına çekme gücü
 REF_SHRINK_K = 8        # hakem kart katsayısı için aynı mantık
 DERBY_CARD_FACTOR = 1.15

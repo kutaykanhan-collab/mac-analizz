@@ -4,8 +4,9 @@ import math
 import numpy as np
 import pandas as pd
 
-from config import COUNTRY_TR, DERBIES, DERBY_CARD_FACTOR, FORM_N, LEAGUES, VALUE_EDGE
-from model import CountModel, GoalModel, goal_markets, lambdas_from_probs, score_matrix
+from config import DERBIES, DERBY_CARD_FACTOR, FORM_N, LEAGUE_STRENGTH, LEAGUES, MODEL_WEIGHT, VALUE_EDGE
+from model import CountModel, GoalModel, fit_lambdas, goal_markets, score_matrix
+from names import ALIASES_ELO, norm
 from stats import team_form
 
 
@@ -13,7 +14,9 @@ from stats import team_form
 # Lig modellerini bir kez kur
 # --------------------------------------------------------------------------
 class Context:
-    def __init__(self, results, ref_date):
+    def __init__(self, results, ref_date, elo=None):
+        self.elo = elo or {}
+        self.elo_norm = {}
         self.results = results
         self.ref_date = ref_date
         r = results.copy()
@@ -44,6 +47,25 @@ class Context:
             for t in set(d.HomeTeam) | set(d.AwayTeam):
                 self.team_league.setdefault(t, code)
         self.tables = {code: league_table(r[(r.Div == code) & (r.Date >= cur_season_start)]) for code in LEAGUES}
+
+
+def _elo_lookup(self, name):
+    """football-data takım adı için ClubElo puanı (yoksa None)."""
+    if not self.elo or not name:
+        return None
+    if not self.elo_norm:
+        self.elo_norm = {norm(k): v for k, v in self.elo.items()}
+    for cand in (name, ALIASES_ELO.get(name)):
+        if not cand:
+            continue
+        if cand in self.elo:
+            return self.elo[cand]
+        if norm(cand) in self.elo_norm:
+            return self.elo_norm[norm(cand)]
+    return None
+
+
+Context.elo_of = _elo_lookup
 
 
 def league_table(d):
@@ -102,6 +124,22 @@ def get_odds(row, keys):
     return None
 
 
+def lambdas_from_expectancy(we, total):
+    """Elo kazanma beklentisini (G + B/2) tutturan gol beklentisi ayrımı."""
+    lo, hi = 0.05, 0.95
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        m = score_matrix(total * mid, total * (1 - mid))
+        i, j = np.indices(m.shape)
+        e = m[i > j].sum() + 0.5 * m[i == j].sum()
+        if e > we:
+            hi = mid
+        else:
+            lo = mid
+    s = (lo + hi) / 2
+    return total * s, total * (1 - s)
+
+
 def derby_info(home, away):
     for pair, why in DERBIES:
         if {home, away} == pair:
@@ -119,34 +157,73 @@ def analyze(ctx: Context, fx: dict):
     lg_h, lg_a = ctx.team_league.get(home), ctx.team_league.get(away)
     notes = []
 
-    # ---- Gol beklentisi -------------------------------------------------
+    # ---- Gol beklentisi (saf model) -------------------------------------
     method = None
-    if lg_h and lg_h == lg_a and lg_h in ctx.goal:
-        gm = ctx.goal[lg_h]
-        lh, la = gm.lambdas(home, away)
-        rho, ht_h, ht_a = gm.rho, gm.ht_h, gm.ht_a
-        method = "Lig gol modeli (Dixon-Coles Poisson)"
-    elif fx.get("elo") and not any(math.isnan(x) for x in fx["elo"]):
-        tot = []
-        for t, lg in ((home, lg_h), (away, lg_a)):
-            if lg and lg in ctx.goal:
-                g = ctx.goal[lg]
-                hh = g.home / 2
-                tot.append(math.exp(g.mu + hh + g.att.get(t, 0)) + math.exp(g.mu + hh - g.de.get(t, 0)))
-        if not tot:
-            return None
-        total = float(np.mean(tot))
-        if len(tot) == 1:
-            notes.append("Rakip takımın lig verisi yok; toplam gol tek takımın profiline ve Elo gücüne göre hesaplandı.")
-        pH, pD, pA = fx["elo"]
-        lh, la = lambdas_from_probs(pH, pA, total)
-        rho = -0.05
-        g0 = ctx.goal.get(lg_h) or ctx.goal.get(lg_a)
-        ht_h, ht_a = g0.ht_h, g0.ht_a
-        method = "Elo gücü + takımların gol profili (ligler arası maç)"
+    g_h, g_a = ctx.goal.get(lg_h), ctx.goal.get(lg_a)
+    elo_h, elo_a = ctx.elo_of(fx.get("elo_home") or home), ctx.elo_of(fx.get("elo_away") or away)
+    if lg_h and lg_h == lg_a and g_h:
+        lh, la = g_h.lambdas(home, away)
+        rho, ht_h, ht_a = g_h.rho, g_h.ht_h, g_h.ht_a
+        method = "Lig gol modeli (Dixon-Coles Poisson, gol + isabetli şut)"
+    elif g_h or g_a:
+        # Ligler arası (UEFA) ya da rakibi takip dışı maç
+        g0 = g_h or g_a
+        rho, ht_h, ht_a = -0.05, g0.ht_h, g0.ht_a
+        home_adv = g0.home
+        if g_h and g_a:
+            s_h = LEAGUE_STRENGTH.get(lg_h, -0.3) / 2
+            s_a = LEAGUE_STRENGTH.get(lg_a, -0.3) / 2
+            mu = (g_h.mu + g_a.mu) / 2
+            home_adv = (g_h.home + g_a.home) / 2
+            lh = math.exp(mu + home_adv + g_h.att.get(home, 0) + s_h - g_a.de.get(away, 0) - s_a)
+            la = math.exp(mu + g_a.att.get(away, 0) + s_a - g_h.de.get(home, 0) - s_h)
+            method = "Lig gücü düzeltmeli gol modeli (ligler arası maç)"
+        else:
+            t, g = (home, g_h) if g_h else (away, g_a)
+            hh = g.home / 2
+            total = math.exp(g.mu + hh + g.att.get(t, 0)) + math.exp(g.mu + hh - g.de.get(t, 0))
+            lh = la = total / 2
+            notes.append("Rakip takımın lig verisi yok; toplam gol bilinen takımın profiline göre hesaplandı.")
+            method = "Elo gücü + bilinen takımın gol profili"
+        if elo_h and elo_a:
+            # Elo varsa güç farkını Elo belirler, toplam gol modelden gelir
+            dr = elo_h - elo_a + 60
+            we = 1 / (10 ** (-dr / 400) + 1)
+            lh, la = lambdas_from_expectancy(we, lh + la)
+            method += " + ClubElo güç farkı"
+        elif not (g_h and g_a):
+            return None  # rakip hakkında hiç veri yok
     else:
         return None
 
+    mk_model = goal_markets(score_matrix(lh, la, rho))
+
+    # ---- Oranlar: piyasa olasılığı -------------------------------------
+    row = fx.get("odds_row")
+    odds = {
+        "1": get_odds(row, ["AvgH", "B365H", "PSH", "MaxH"]),
+        "X": get_odds(row, ["AvgD", "B365D", "PSD", "MaxD"]),
+        "2": get_odds(row, ["AvgA", "B365A", "PSA", "MaxA"]),
+        "2.5 Üst": get_odds(row, ["Avg>2.5", "B365>2.5", "P>2.5", "Max>2.5"]),
+        "2.5 Alt": get_odds(row, ["Avg<2.5", "B365<2.5", "P<2.5", "Max<2.5"]),
+    }
+    implied, margins = {}, {}
+    for group in (("1", "X", "2"), ("2.5 Üst", "2.5 Alt")):
+        if all(odds[k] for k in group):
+            ssum = sum(1 / odds[k] for k in group)
+            for k in group:
+                implied[k] = (1 / odds[k]) / ssum
+            margins["/".join(group)] = round(100 * (ssum - 1), 1)
+
+    # ---- Nihai olasılık: model + piyasa karışımı ------------------------
+    # Geçmiş testte piyasa oranları tek başına modelden isabetliydi; ikisinin
+    # karışımı en iyi sonucu verdi. Oran yoksa saf model kullanılır.
+    if "1" in implied:
+        w = MODEL_WEIGHT
+        sup = w * (mk_model["1"] - mk_model["2"]) + (1 - w) * (implied["1"] - implied["2"])
+        o25 = (w * mk_model["2.5 Üst"] + (1 - w) * implied["2.5 Üst"]) if "2.5 Üst" in implied else None
+        lh, la = fit_lambdas(lh, la, sup, o25, rho)
+        method += f" · %{round(100 * w)} model + %{round(100 * (1 - w))} piyasa"
     m = score_matrix(lh, la, rho)
     mk = goal_markets(m)
     mh = score_matrix(lh * ht_h, la * ht_a, 0.0)
@@ -224,35 +301,22 @@ def analyze(ctx: Context, fx: dict):
 
     notes.append("Oyuncu bazlı veri (sakatlık, ceza, bireysel şut) ücretsiz kaynakta yok; analiz takım düzeyindedir.")
 
-    # ---- Oranlar ve değer ----------------------------------------------
-    row = fx.get("odds_row")
-    odds = {
-        "1": get_odds(row, ["AvgH", "B365H", "PSH", "MaxH"]),
-        "X": get_odds(row, ["AvgD", "B365D", "PSD", "MaxD"]),
-        "2": get_odds(row, ["AvgA", "B365A", "PSA", "MaxA"]),
-        "2.5 Üst": get_odds(row, ["Avg>2.5", "B365>2.5", "P>2.5", "Max>2.5"]),
-        "2.5 Alt": get_odds(row, ["Avg<2.5", "B365<2.5", "P<2.5", "Max<2.5"]),
-    }
+    # ---- Oran değerlendirmesi --------------------------------------------
     odds_eval = []
-    implied = {}
-    for group in (("1", "X", "2"), ("2.5 Üst", "2.5 Alt")):
-        if all(odds[k] for k in group):
-            s = sum(1 / odds[k] for k in group)
-            for k in group:
-                implied[k] = (1 / odds[k]) / s
-            for k in group:
-                p = mk[k]
-                edge = p * odds[k] - 1
-                odds_eval.append({
-                    "pazar": "MS " + k if k in ("1", "X", "2") else k,
-                    "oran": odds[k], "piyasa": pct(implied[k]), "model": pct(p),
-                    "fark": round(100 * (p - implied[k]), 1), "deger": round(100 * edge, 1),
-                    "durum": "Değerli" if edge >= VALUE_EDGE else ("Adil" if edge > -0.04 else "Değersiz"),
-                })
-            marj = round(100 * (s - 1), 1)
-            odds_eval.append({"pazar": f"Kâr marjı ({'/'.join(group)})", "marj": marj})
+    for k in ("1", "X", "2", "2.5 Üst", "2.5 Alt"):
+        if k not in implied:
+            continue
+        edge = mk_model[k] * odds[k] - 1
+        odds_eval.append({
+            "pazar": "MS " + k if k in ("1", "X", "2") else k,
+            "oran": odds[k], "piyasa": pct(implied[k]), "model": pct(mk_model[k]), "nihai": pct(mk[k]),
+            "fark": round(100 * (mk_model[k] - implied[k]), 1), "deger": round(100 * edge, 1),
+            "durum": "Model yüksek görüyor" if edge >= VALUE_EDGE else ("Uyumlu" if edge > -0.04 else "Model düşük görüyor"),
+        })
+    for g, mj in margins.items():
+        odds_eval.append({"pazar": f"Kâr marjı ({g})", "marj": mj})
     if not implied:
-        notes.append("Bu maç için oran verisi yok; sadece model olasılığı ve adil oran gösteriliyor.")
+        notes.append("Bu maç için oran verisi yok; olasılıklar sadece modelden geliyor.")
 
     # ---- Öneriler -------------------------------------------------------
     rec = {}
@@ -296,10 +360,12 @@ def analyze(ctx: Context, fx: dict):
         if not block:
             return None
         cand = []
-        for r in block["cizgiler"]:
+        # Sadece beklentiye en yakın çizgiler (uç çizgiler zaten bariz, oranı düşük olur)
+        near = sorted(block["cizgiler"], key=lambda r: abs(r["cizgi"] - block["toplam"]))[:2]
+        for r in near:
             for side, key in (("Üst", "ust"), ("Alt", "alt")):
                 p = r[key] / 100
-                if 0.55 <= p <= 0.80:
+                if 0.52 <= p <= 0.80:
                     cand.append((f"{name} {r['cizgi']} {side}", p))
         if not cand:
             return {"secim": "Pas geç", "olasilik": None, "aralik": block["aralik"], "risk": "Yüksek"}
@@ -312,15 +378,7 @@ def analyze(ctx: Context, fx: dict):
     rec["sut"] = ({"toplam_sut": shots["aralik"], "isabetli": sot["aralik"] if sot else None,
                    "ev": shots["ev"], "dep": shots["dep"]} if shots else None)
 
-    # En değerli 2-3 bahis
-    cands = []
-    for e in odds_eval:
-        if e.get("durum") == "Değerli" and e["model"] >= 33:
-            key = e["pazar"].replace("MS ", "")
-            cands.append({"bahis": e["pazar"], "olasilik": e["model"], "oran": e["oran"],
-                          "deger": e["deger"], "tip": "Değer (oran > adil oran)",
-                          "risk": risk_of(mk[key], e["oran"])})
-    cands.sort(key=lambda c: -c["deger"])
+    # En güçlü 2-3 bahis (nihai olasılığa göre, farklı pazarlardan)
     pool = []
     for k in ("mac_sonucu", "kg", "toplam_gol"):
         r = rec[k]
@@ -333,18 +391,16 @@ def analyze(ctx: Context, fx: dict):
         pool.append(("İY 0.5 Üst", iy05, fair(iy05)))
     pool = [p for p in pool if p[2] and p[2] >= 1.2]
     pool.sort(key=lambda t: -t[1])
-    used = {c["bahis"] for c in cands}
-    for name, p, fo in pool:
-        if len(cands) >= 3:
-            break
-        if name in used:
-            continue
-        cands.append({"bahis": name, "olasilik": pct(p), "oran": None, "adil_oran": fo,
-                      "tip": "Yüksek olasılık", "risk": risk_of(p)})
-        used.add(name)
-    best = cands[:3]
+    best = []
+    for name, p, fo in pool[:3]:
+        oo = None
+        key = name.replace("MS ", "")
+        if key in odds and odds[key]:
+            oo = odds[key]
+        best.append({"bahis": name, "olasilik": pct(p), "oran": oo, "adil_oran": fo,
+                     "tip": "Yüksek olasılık", "risk": risk_of(p)})
     surpriz = [{"bahis": e["pazar"], "olasilik": e["model"], "oran": e["oran"], "deger": e["deger"]}
-               for e in odds_eval if e.get("durum") == "Değerli" and e["model"] < 33]
+               for e in odds_eval if e.get("durum") == "Model yüksek görüyor"]
 
     # ---- Format değerlendirmesi ----------------------------------------
     fmt_notes = []
@@ -392,7 +448,7 @@ def analyze(ctx: Context, fx: dict):
     if f_h and f_h["genel"] and f_h["genel"]["n"] < 8 or f_a and f_a["genel"] and f_a["genel"]["n"] < 8:
         risks.append("Takımlardan birinin veri sayısı az (yeni yükselen olabilir); güven düşük.")
     if not implied:
-        risks.append("Oran verisi yok: önerileri iddaa oranıyla karşılaştırıp adil orandan yüksekse oyna.")
+        risks.append("Oran verisi yok: olasılıklar saf modelden; iddaa oranını adil oranla karşılaştır.")
 
     return {
         "id": f"{fx['date']}_{home}_{away}".replace(" ", "_"),

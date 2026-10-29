@@ -14,7 +14,7 @@ import pandas as pd
 from scipy.optimize import minimize, minimize_scalar
 from scipy.stats import nbinom, poisson
 
-from config import REF_SHRINK_K, SHRINK_K, TIME_DECAY
+from config import REF_SHRINK_K, RIDGE, SHRINK_K, SOT_MIX, TIME_DECAY
 
 MAXG = 10
 
@@ -40,18 +40,26 @@ def _tau(x, y, lh, la, rho):
 
 
 class GoalModel:
-    def __init__(self, df: pd.DataFrame, ref_date):
+    def __init__(self, df: pd.DataFrame, ref_date, ridge=RIDGE):
         df = df[df["Date"] < ref_date]
         self.teams = sorted(set(df.HomeTeam) | set(df.AwayTeam))
         self.idx = {t: i for i, t in enumerate(self.teams)}
         n = len(self.teams)
         hi = df.HomeTeam.map(self.idx).to_numpy()
         ai = df.AwayTeam.map(self.idx).to_numpy()
-        hg = df.FTHG.to_numpy(float)
-        ag = df.FTAG.to_numpy(float)
+        hg_real = df.FTHG.to_numpy(float)
+        ag_real = df.FTAG.to_numpy(float)
+        # Takım gücü, gerçek gol ile isabetli şuttan beklenen golün karışımından
+        # hesaplanır (şans faktörünü azaltır, geçmiş testte isabeti artırdı).
+        hg, ag = hg_real.copy(), ag_real.copy()
+        if SOT_MIX < 1 and {"HST", "AST"}.issubset(df.columns):
+            ok = df.HST.notna().to_numpy() & df.AST.notna().to_numpy()
+            if ok.sum() > 50:
+                k = (hg_real[ok].sum() + ag_real[ok].sum()) / max(df.HST[ok].sum() + df.AST[ok].sum(), 1)
+                hg[ok] = SOT_MIX * hg_real[ok] + (1 - SOT_MIX) * k * df.HST.to_numpy(float)[ok]
+                ag[ok] = SOT_MIX * ag_real[ok] + (1 - SOT_MIX) * k * df.AST.to_numpy(float)[ok]
         w = _weights(df.Date, ref_date)
         self.n_matches = len(df)
-        ridge = 0.5  # takım güçlerini sıfıra (lig ortalamasına) hafifçe çeker
 
         def nll(p):
             att, de, home, mu = p[:n], p[n:2 * n], p[2 * n], p[2 * n + 1]
@@ -83,11 +91,11 @@ class GoalModel:
         # Dixon-Coles rho
         lh = np.exp(self.mu + self.home + p[:n][hi] - p[n:2 * n][ai])
         la = np.exp(self.mu + p[:n][ai] - p[n:2 * n][hi])
-        low = (hg <= 1) & (ag <= 1)
+        low = (hg_real <= 1) & (ag_real <= 1)
 
         def rho_nll(r):
             s = 0.0
-            for x, y, a, b, ww in zip(hg[low], ag[low], lh[low], la[low], w[low]):
+            for x, y, a, b, ww in zip(hg_real[low], ag_real[low], lh[low], la[low], w[low]):
                 t = _tau(int(x), int(y), a, b, r)
                 if t <= 0:
                     return 1e9
@@ -147,6 +155,29 @@ def goal_markets(m):
     flat.sort(key=lambda t: -t[1])
     out["top_scores"] = [(f"{a}-{b}", float(p)) for (a, b), p in flat[:5]]
     return {k: (float(v) if not isinstance(v, list) else v) for k, v in out.items()}
+
+
+def fit_lambdas(lh0, la0, sup_target=None, over25_target=None, rho=0.0):
+    """Gol beklentisini hedef olasılıklara (ör. model+piyasa karışımı) uyacak şekilde
+    ayarlar. sup_target = P(1)-P(2), over25_target = P(2.5 Üst)."""
+    from scipy.optimize import minimize as _min
+
+    def loss(x):
+        lh, la = math.exp(x[0]), math.exp(x[1])
+        m = score_matrix(lh, la, rho)
+        i, j = np.indices(m.shape)
+        e = 0.0
+        if sup_target is not None:
+            e += ((m[i > j].sum() - m[i < j].sum()) - sup_target) ** 2
+        if over25_target is not None:
+            e += (m[(i + j) > 2.5].sum() - over25_target) ** 2
+        else:  # toplam gol modeldeki gibi kalsın
+            e += 0.05 * ((lh + la) - (lh0 + la0)) ** 2
+        return e
+
+    r = _min(loss, [math.log(lh0), math.log(la0)], method="Nelder-Mead",
+             options={"xatol": 1e-4, "fatol": 1e-8, "maxiter": 400})
+    return math.exp(r.x[0]), math.exp(r.x[1])
 
 
 def lambdas_from_probs(p_home, p_away, total):

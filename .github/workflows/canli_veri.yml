@@ -6,19 +6,20 @@ on:
 permissions:
   contents: write
 jobs:
-  probe:
+  canli:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install requests
+      - run: pip install -r requirements.txt
         timeout-minutes: 5
-      - run: python src/live_collect.py --days 45 --max 1200
+      - run: python src/live_collect.py --days 10 --max 600
+      - run: python src/live_backtest.py
       - run: |
           git config user.name "analiz-bot"
           git config user.email "analiz-bot@users.noreply.github.com"
-          git add -f data/live || true
+          git add -f data/live docs/data/live_params.json docs/data/live_test.json || true
           git commit -m "Canlı model verisi" || true
           git pull --rebase origin main && git push

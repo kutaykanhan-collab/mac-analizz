@@ -101,6 +101,7 @@ ul.notes li{margin:4px 0}
 </header>
 <div class="tabs">
   <div class="tab on" data-v="bulten">Bülten</div>
+  <div class="tab" data-v="canli">Canlı</div>
   <div class="tab" data-v="test">Model Testi</div>
 </div>
 <div class="wrap" id="main"></div>
@@ -108,6 +109,7 @@ ul.notes li{margin:4px 0}
 
 <script>
 const $ = s => document.querySelector(s);
+let LT = null;
 let DATA = null, BT = null, view = "bulten";
 const F = { q: "", lig: "Tümü", sadeceDeger: false, derbi: false };
 
@@ -133,6 +135,7 @@ async function load() {
     DATA = { maclar: [] };
   }
   try { BT = await (await fetch("data/backtest.json?" + Date.now())).json(); } catch (e) { BT = null; }
+  try { LT = await (await fetch("data/live_test.json?" + Date.now())).json(); } catch (e) { LT = null; }
   render();
   route();
 }
@@ -150,6 +153,8 @@ function filtered() {
 
 function render() {
   const main = $("#main");
+  if (view !== "canli" && window.Canli) Canli.stop();
+  if (view === "canli") return Canli.render(main);
   if (view === "test") return renderTest(main);
   const ligs = ["Tümü", ...new Set(DATA.maclar.map(m => m.turnuva))];
   let html = `<div class="bar">
@@ -190,7 +195,7 @@ function render() {
 }
 
 function renderTest(main) {
-  if (!BT || !BT.genel) { main.innerHTML = `<div class="empty">Henüz test sonucu yok. Pazartesi otomatik çalışır.</div>`; return; }
+  if (!BT || !BT.genel) { main.innerHTML = `<div class="empty">Henüz test sonucu yok. Pazartesi otomatik çalışır.</div>` + liveTestHtml(); return; }
   const sg = BT.sinyal || {};
   main.innerHTML = `<div class="sec"><h3>Geriye dönük test</h3>
     <p style="color:var(--muted);font-size:13px;margin-bottom:10px">Son ${BT.hafta} hafta, ${BT.genel[0].mac} maç. Model her hafta sadece o güne kadarki veriyle kuruldu ve o haftanın maçlarını tahmin etti.</p>
@@ -203,7 +208,20 @@ function renderTest(main) {
   <div class="sec"><h3>Lig bazında MS isabeti</h3>
     <table><tr><th>Lig</th><th>Maç</th><th>Model</th><th>Piyasa</th><th>Nihai</th></tr>
     ${(BT.ligler || []).map(r => `<tr><td>${esc(r.lig)}</td><td>${r.mac}</td><td>%${r.model}</td><td>%${r.piyasa}</td><td>%${r.nihai}</td></tr>`).join("")}</table>
-    <div class="foot">Güncelleme ${esc(BT.olusturma)}</div></div>`;
+    <div class="foot">Güncelleme ${esc(BT.olusturma)}</div></div>${liveTestHtml()}`;
+}
+
+function liveTestHtml() {
+  if (!LT) return "";
+  const cal = (rows, t) => `<p style="color:var(--muted);font-size:13px;margin:12px 0 4px">${t}</p><table><tr><th>Model dedi</th><th>Durum</th><th>Ort. tahmin</th><th>Gerçekte</th></tr>
+    ${rows.filter(r => r.n).map(r => `<tr><td>${r.aralik}</td><td>${r.n}</td><td>%${r.tahmin}</td><td><b>%${r.gercek}</b></td></tr>`).join("")}</table>`;
+  return `<div class="sec"><h3>Canlı model testi</h3>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:10px">${LT.mac} geçmiş maçta, maçın 10-85. dakikaları arasında ${LT.test_anlik} ayrı anda tahmin yapıldı (ayar için kullanılmayan maçlarda). Hata düşük olan daha iyi.</p>
+    <table><tr><th>Model</th><th>Kalan sürede gol</th><th>Sonraki 10 dk</th></tr>
+    ${LT.karsilastirma.map(r => `<tr><td>${esc(r.model)}</td><td>${r.kalan_sure_hata}</td><td>${r.sonraki10_hata}</td></tr>`).join("")}</table>
+    ${cal(LT.kalibrasyon_kalan, "Kalan sürede gol: model %X dediğinde gerçekte ne oldu?")}
+    ${cal(LT.kalibrasyon_10dk, "Sonraki 10 dakikada gol:")}
+    <div class="foot">Güncelleme ${esc(LT.olusturma)}</div></div>`;
 }
 
 function formTable(m, which) {
@@ -344,5 +362,6 @@ document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
 });
 load();
 </script>
+<script src="canli.js"></script>
 </body>
 </html>

@@ -63,3 +63,15 @@ cd docs && python -m http.server 8000   # tarayıcıda localhost:8000
 - football-data fikstür dosyası birkaç gün ileriyi gösterir. Hafta sonu maçları genelde Perşembe-Cuma eklenir.
 - Takım adı eşleşmezse `src/names.py` içindeki `ALIASES` sözlüğüne ekle (diğer kaynaktaki ad → football-data adı).
 - Hiçbir model kazanç garantisi vermez. "Model Testi" sekmesi modelin geçmiş başarısını dürüstçe gösterir; ona bakmadan büyük oynama.
+
+## Canlı sekme
+
+Telefon, FotMob'dan her 60 saniyede canlı veri çeker ve şu ihtimalleri hesaplar: maçta yeni gol, sonraki 10 dakikada gol, sonraki golü kim atar, şu anki skora göre maç sonucu ve Üst. Hesap telefonda yapılır, GitHub'ı beklemez.
+
+Model (src/live_model.py ve docs/canli.js, aynı formül):
+- Maç öncesi gol beklentisi (bültendeki analizden) kalan süreye yayılır. Gol hızı maçın sonlarına doğru artar, uzatma süresi de hesaba girer.
+- Takımın xG temposu, maç öncesi beklentiyle harmanlanır.
+- Geride olan takımın temposu artar. Kırmızı kart, eksik kalanın temposunu düşürür, rakibinkini artırır.
+- Son 10 dakikanın baskısı (momentum), sonraki 10 dakikayı etkiler.
+
+`src/live_backtest.py` geçmiş maçlarda modeli test eder ve ayarları `docs/data/live_params.json` dosyasına yazar. "Canlı model verisi" iş akışı her pazartesi yeni maçları ekleyip testi yeniler.

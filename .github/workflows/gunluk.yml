@@ -1,0 +1,39 @@
+name: Günlük analiz
+
+on:
+  schedule:
+    - cron: "17 6 * * *"    # her gün 09:17 (Türkiye saati)
+    - cron: "17 13 * * *"   # 16:17 tekrar (oran ve hakem güncellemesi için)
+  workflow_dispatch:         # elle çalıştırma butonu
+
+permissions:
+  contents: write
+
+concurrency:
+  group: analiz
+  cancel-in-progress: false
+
+jobs:
+  analiz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Bülten analizi
+        run: python src/run.py
+      - name: Model testi (pazartesi ya da elle çalıştırınca)
+        run: |
+          if [ "$(date -u +%u)" = "1" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python src/backtest.py --offline --weeks 30
+          fi
+      - name: Sonuçları kaydet
+        run: |
+          git config user.name "analiz-bot"
+          git config user.email "analiz-bot@users.noreply.github.com"
+          git add docs/data
+          git diff --cached --quiet || git commit -m "Analiz $(date -u +'%Y-%m-%d %H:%M')"
+          git push

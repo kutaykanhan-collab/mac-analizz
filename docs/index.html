@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1410">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Maç Analiz">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>Maç Analiz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d1410; --panel:#141d17; --panel2:#1b261f; --line:#26332a;
+  --text:#e8efe9; --muted:#8fa196; --accent:#c6f432; --accent-ink:#0d1410;
+  --low:#3ccf7a; --mid:#f2b33d; --high:#f2645a; --home:#5fb4ff; --away:#ff8a5c; --draw:#9aa79f;
+  --r:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text);font:15px/1.45 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+body{padding-bottom:env(safe-area-inset-bottom)}
+.wrap{max-width:720px;margin:0 auto;padding:0 16px 40px}
+header{padding:calc(14px + env(safe-area-inset-top)) 16px 10px;max-width:720px;margin:0 auto;display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+h1{font:700 26px/1 "Barlow Condensed",sans-serif;letter-spacing:.5px;text-transform:uppercase}
+h1 span{color:var(--accent)}
+.stamp{color:var(--muted);font-size:12px;text-align:right}
+.tabs{display:flex;gap:6px;max-width:720px;margin:0 auto;padding:0 16px 10px}
+.tab{flex:1;padding:9px;border-radius:10px;background:var(--panel);border:1px solid var(--line);color:var(--muted);font-weight:600;font-size:14px;text-align:center;cursor:pointer}
+.tab.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.bar{position:sticky;top:0;z-index:5;background:linear-gradient(var(--bg) 85%,transparent);padding:8px 0 12px}
+.search{width:100%;padding:11px 14px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit}
+.chips{display:flex;gap:6px;overflow-x:auto;margin-top:8px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;padding:6px 11px;border-radius:99px;border:1px solid var(--line);background:var(--panel);color:var(--muted);font-size:13px;cursor:pointer;white-space:nowrap}
+.chip.on{border-color:var(--accent);color:var(--accent)}
+.day{font:700 15px "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:18px 2px 8px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin-bottom:10px;cursor:pointer;transition:border-color .15s}
+.card:active{border-color:var(--accent)}
+.meta{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;gap:8px}
+.meta b{color:var(--text);font-weight:600}
+.teams{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;margin:8px 0}
+.teams .t{min-width:0;overflow-wrap:anywhere;font:700 19px/1.1 "Barlow Condensed",sans-serif}
+.teams .t.r{text-align:right}
+.teams .xg{font-size:12px;color:var(--muted);text-align:center;white-space:nowrap}
+.pbar{display:flex;height:6px;border-radius:4px;overflow:hidden;gap:2px}
+.pbar i{display:block}
+.plab{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px}
+.picks{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.pick{font-size:12px;padding:4px 8px;border-radius:8px;background:var(--panel2);border:1px solid var(--line)}
+.pick .d{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:1px}
+.tag{display:inline-block;font-size:11px;padding:2px 7px;border-radius:6px;background:var(--panel2);color:var(--muted);margin-left:4px}
+.tag.derbi{background:#3a1f1d;color:#ff9b8f}
+.tag.val{background:#2a3410;color:var(--accent)}
+.empty{color:var(--muted);text-align:center;padding:50px 10px}
+/* detay */
+#detail{position:fixed;inset:0;background:var(--bg);overflow-y:auto;z-index:20;display:none}
+#detail.on{display:block}
+.dhead{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:calc(10px + env(safe-area-inset-top)) 16px 10px;display:flex;align-items:center;gap:10px;z-index:2}
+.back{background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:7px 12px;font:inherit;cursor:pointer}
+.dhead .ttl{font:700 17px "Barlow Condensed",sans-serif;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hero{padding:16px 0 4px}
+.hero h2{overflow-wrap:anywhere;font:700 clamp(24px,7vw,32px)/1.05 "Barlow Condensed",sans-serif}
+.hero h2 em{font-style:normal;color:var(--muted);font-size:20px;margin:0 6px}
+.hero .sub{color:var(--muted);font-size:13px;margin-top:6px}
+.sec{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-top:12px}
+.sec h3{font:700 16px "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.8px;color:var(--accent);margin-bottom:10px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px}
+.kv dt{color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:center}
+th{color:var(--muted);font-weight:500;font-size:12px}
+td:first-child,th:first-child{text-align:left;color:var(--muted)}
+tr:last-child td{border-bottom:none}
+.seg{display:flex;gap:4px;margin-bottom:10px}
+.seg button{flex:1;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);font:inherit;font-size:13px;cursor:pointer}
+.seg button.on{color:var(--accent);border-color:var(--accent)}
+.form{font-family:ui-monospace,monospace;letter-spacing:2px}
+.form .G{color:var(--low)}.form .B{color:var(--draw)}.form .M{color:var(--high)}
+.rec{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.rec:last-child{border-bottom:none}
+.rec .k{color:var(--muted);font-size:12px}
+.rec .v{font-weight:600}
+.rec .p{text-align:right;font-size:13px;white-space:nowrap}
+.risk{font-size:11px;padding:2px 7px;border-radius:6px;font-weight:600}
+.risk.Düşük{background:#173a26;color:var(--low)}.risk.Orta{background:#3a2e14;color:var(--mid)}.risk.Yüksek{background:#3a1a18;color:var(--high)}
+.best{border:1px solid var(--accent);background:#18200f}
+.best .rec .v{color:var(--accent)}
+ul.notes{padding-left:18px;color:var(--muted);font-size:13px}
+ul.notes li{margin:4px 0}
+.good{color:var(--low)}.bad{color:var(--high)}
+.chars span{display:inline-block;padding:4px 9px;border-radius:8px;background:var(--panel2);margin:0 6px 6px 0;font-size:13px}
+.foot{color:var(--muted);font-size:12px;text-align:center;margin-top:24px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Maç <span>Analiz</span></h1>
+  <div class="stamp" id="stamp">Yükleniyor…</div>
+</header>
+<div class="tabs">
+  <div class="tab on" data-v="bulten">Bülten</div>
+  <div class="tab" data-v="test">Model Testi</div>
+</div>
+<div class="wrap" id="main"></div>
+<div id="detail"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+let DATA = null, BT = null, view = "bulten";
+const F = { q: "", lig: "Tümü", sadeceDeger: false, derbi: false };
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const v = (x, suf = "") => x === null || x === undefined ? "–" : x + suf;
+const riskTag = r => r ? `<span class="risk ${r}">${r}</span>` : "";
+const dayName = iso => {
+  const d = new Date(iso + "T12:00:00");
+  const t = new Date(); t.setHours(12, 0, 0, 0);
+  const diff = Math.round((d - t) / 864e5);
+  const s = d.toLocaleDateString("tr-TR", { weekday: "long", day: "numeric", month: "long" });
+  return diff === 0 ? "Bugün · " + s : diff === 1 ? "Yarın · " + s : s;
+};
+const riskColor = r => r === "Düşük" ? "var(--low)" : r === "Orta" ? "var(--mid)" : "var(--high)";
+
+async function load() {
+  try {
+    const r = await fetch("data/latest.json?" + Date.now());
+    DATA = await r.json();
+    $("#stamp").innerHTML = `Güncelleme<br>${esc(DATA.olusturma)}`;
+  } catch (e) {
+    $("#stamp").textContent = "Veri yok";
+    DATA = { maclar: [] };
+  }
+  try { BT = await (await fetch("data/backtest.json?" + Date.now())).json(); } catch (e) { BT = null; }
+  render();
+  route();
+}
+
+function hasValue(m) { return (m.oranlar || []).some(o => o.durum === "Değerli"); }
+
+function filtered() {
+  const q = F.q.toLowerCase();
+  return DATA.maclar.filter(m =>
+    (F.lig === "Tümü" || m.turnuva === F.lig) &&
+    (!F.sadeceDeger || hasValue(m)) &&
+    (!F.derbi || m.derbi.var) &&
+    (!q || (m.ev + " " + m.dep + " " + m.turnuva).toLowerCase().includes(q)));
+}
+
+function render() {
+  const main = $("#main");
+  if (view === "test") return renderTest(main);
+  const ligs = ["Tümü", ...new Set(DATA.maclar.map(m => m.turnuva))];
+  let html = `<div class="bar">
+    <input class="search" id="q" placeholder="Takım ya da lig ara" value="${esc(F.q)}">
+    <div class="chips">
+      <span class="chip ${F.sadeceDeger ? "on" : ""}" data-t="deger">Değerli oran</span>
+      <span class="chip ${F.derbi ? "on" : ""}" data-t="derbi">Derbi</span>
+      ${ligs.map(l => `<span class="chip ${F.lig === l ? "on" : ""}" data-l="${esc(l)}">${esc(l)}</span>`).join("")}
+    </div></div>`;
+  const list = filtered();
+  if (!list.length) html += `<div class="empty">Bu filtrede maç yok.</div>`;
+  let day = null;
+  for (const m of list) {
+    if (m.tarih !== day) { day = m.tarih; html += `<div class="day">${dayName(day)}</div>`; }
+    const p = m.olasiliklar, b = (m.en_degerli || [])[0];
+    html += `<div class="card" data-id="${esc(m.id)}">
+      <div class="meta"><span>${esc(m.turnuva)}${m.derbi.var ? '<span class="tag derbi">Derbi</span>' : ""}${hasValue(m) ? '<span class="tag val">Değer</span>' : ""}</span><b>${m.saat || "Saat ?"}</b></div>
+      <div class="teams"><div class="t">${esc(m.ev)}</div><div class="xg">xG ${m.beklenen_gol.ev} – ${m.beklenen_gol.dep}</div><div class="t r">${esc(m.dep)}</div></div>
+      <div class="pbar"><i style="width:${p["1"]}%;background:var(--home)"></i><i style="width:${p["X"]}%;background:var(--draw)"></i><i style="width:${p["2"]}%;background:var(--away)"></i></div>
+      <div class="plab"><span>1 · %${p["1"]}</span><span>X · %${p["X"]}</span><span>2 · %${p["2"]}</span></div>
+      <div class="picks">${(m.en_degerli || []).map(x => `<span class="pick"><span class="d" style="background:${riskColor(x.risk)}"></span>${esc(x.bahis)} · %${x.olasilik}</span>`).join("")}</div>
+    </div>`;
+  }
+  html += `<div class="foot">${DATA.mac_sayisi || 0} maç · istatistik modeli · kazanç garantisi yoktur, sorumlu oyna.</div>`;
+  main.innerHTML = html;
+  $("#q").oninput = e => { F.q = e.target.value; const pos = e.target.selectionStart; render(); const q = $("#q"); q.focus(); q.setSelectionRange(pos, pos); };
+  main.querySelectorAll(".chip").forEach(c => c.onclick = () => {
+    if (c.dataset.t === "deger") F.sadeceDeger = !F.sadeceDeger;
+    else if (c.dataset.t === "derbi") F.derbi = !F.derbi;
+    else F.lig = c.dataset.l;
+    render();
+  });
+  main.querySelectorAll(".card").forEach(c => c.onclick = () => { location.hash = "m=" + encodeURIComponent(c.dataset.id); });
+}
+
+function renderTest(main) {
+  if (!BT || !BT.satirlar) { main.innerHTML = `<div class="empty">Henüz test sonucu yok.</div>`; return; }
+  const rows = BT.satirlar;
+  main.innerHTML = `<div class="sec"><h3>Geriye dönük test</h3>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:10px">Son ${BT.hafta} hafta. Model her hafta sadece o güne kadarki veriyle kuruldu, sonra o haftanın maçları tahmin edildi. <b>İsabet</b>: en yüksek olasılıklı seçeneğin tutma oranı. <b>ROI</b>: değerli işaretlenen bahislere 1'er birim yatırılsaydı getiri.</p>
+    <table><tr><th>Kapsam</th><th>Pazar</th><th>Maç</th><th>İsabet</th><th>Değer bahis</th><th>ROI</th></tr>
+    ${rows.map(r => `<tr><td>${esc(r.kapsam)}</td><td>${esc(r.pazar)}</td><td>${r.mac}</td><td>%${r.isabet}</td><td>${r.deger_bahis}</td><td class="${r.roi > 0 ? "good" : r.roi < 0 ? "bad" : ""}">${r.roi === null ? "–" : "%" + r.roi}</td></tr>`).join("")}
+    </table><div class="foot">Güncelleme ${esc(BT.olusturma)}</div></div>`;
+}
+
+function formTable(m, which) {
+  const a = m.form.ev?.[which === "ev/dep" ? "ev" : "genel"], b = m.form.dep?.[which === "ev/dep" ? "deplasman" : "genel"];
+  if (!a && !b) return `<p class="k">Form verisi yok.</p>`;
+  const seri = s => s ? `<span class="form">${[...s].map(c => `<span class="${c}">${c}</span>`).join("")}</span>` : "–";
+  const row = (lab, f, suf = "") => `<tr><td>${lab}</td><td>${v(a?.[f], suf)}</td><td>${v(b?.[f], suf)}</td></tr>`;
+  return `<table>
+    <tr><th></th><th>${esc(m.ev)}${which === "ev/dep" ? " (ev)" : ""}</th><th>${esc(m.dep)}${which === "ev/dep" ? " (dep)" : ""}</th></tr>
+    <tr><td>Maç</td><td>${v(a?.n)}</td><td>${v(b?.n)}</td></tr>
+    <tr><td>G-B-M</td><td>${a ? `${a.G}-${a.B}-${a.M}` : "–"}</td><td>${b ? `${b.G}-${b.B}-${b.M}` : "–"}</td></tr>
+    <tr><td>Son maçlar</td><td>${seri(a?.seri)}</td><td>${seri(b?.seri)}</td></tr>
+    ${row("Puan / maç", "puan_ort")}
+    ${row("Atılan gol", "atilan")}${row("Yenilen gol", "yenilen")}
+    ${row("İY atılan", "iy_atilan")}${row("İY yenilen", "iy_yenilen")}
+    ${row("İY gol olan maç", "iy_gol_yuzde", "%")}
+    ${row("KG Var", "kg_var_yuzde", "%")}${row("2.5 Üst", "ust25_yuzde", "%")}${row("1.5 Üst", "ust15_yuzde", "%")}
+    ${row("Korner (kendi)", "korner")}${row("Korner (yenilen)", "korner_yenilen")}
+    ${row("Şut", "sut")}${row("İsabetli şut", "isabetli_sut")}${row("Şut (yenilen)", "sut_yenilen")}
+    ${row("Kart (kendi)", "kart")}${row("Kart (maç toplamı)", "kart_mac_toplam")}
+  </table>`;
+}
+
+function lineTable(block, label) {
+  if (!block) return `<p class="k">Bu ligde ${label} verisi yok.</p>`;
+  return `<dl class="kv"><dt>Beklenen</dt><dd>${block.ev} + ${block.dep} = <b>${block.toplam}</b></dd><dt>Olası aralık</dt><dd>${block.aralik}</dd></dl>
+    <table style="margin-top:8px"><tr><th>Çizgi</th><th>Üst</th><th>Alt</th></tr>
+    ${block.cizgiler.map(r => `<tr><td>${r.cizgi}</td><td>%${r.ust}</td><td>%${r.alt}</td></tr>`).join("")}</table>`;
+}
+
+function recRow(k, r) {
+  if (!r) return "";
+  return `<div class="rec"><div><div class="k">${k}</div><div class="v">${esc(r.secim)}</div>${r.aciklama ? `<div class="k">${esc(r.aciklama)}</div>` : ""}${r.aralik ? `<div class="k">Beklenen aralık: ${r.aralik}</div>` : ""}</div>
+    <div class="p">${r.olasilik != null ? "%" + r.olasilik : ""}${r.adil_oran ? `<div class="k">adil oran ${r.adil_oran}</div>` : ""}${riskTag(r.risk)}</div></div>`;
+}
+
+function showDetail(id) {
+  const m = DATA.maclar.find(x => x.id === id);
+  if (!m) return;
+  const d = $("#detail");
+  const o = m.oneriler, p = m.olasiliklar;
+  const pos = Object.entries(m.puan_durumu || {}).map(([t, s]) => `${esc(t)} ${s.sira}. (${s.puan} p)`).join(" · ");
+  let formMode = "genel";
+  d.innerHTML = `<div class="dhead"><button class="back" id="back">← Geri</button><div class="ttl">${esc(m.ev)} – ${esc(m.dep)}</div></div>
+  <div class="wrap">
+    <div class="hero"><h2>${esc(m.ev)}<em>vs</em>${esc(m.dep)}</h2>
+      <div class="sub">${esc(m.turnuva)} · ${dayName(m.tarih)} ${m.saat || ""}</div></div>
+
+    <div class="sec"><h3>Maç Bilgileri</h3><dl class="kv">
+      <dt>Format</dt><dd>${esc(m.format)}</dd>
+      <dt>Derbi</dt><dd>${m.derbi.var ? "Evet · " + esc(m.derbi.neden) : "Hayır"}</dd>
+      ${pos ? `<dt>Puan durumu</dt><dd>${pos}</dd>` : ""}
+      <dt>Beklenen gol</dt><dd>${m.beklenen_gol.ev} – ${m.beklenen_gol.dep} (toplam ${m.beklenen_gol.toplam})</dd>
+      <dt>Olası skorlar</dt><dd>${m.skorlar.map(s => `${s.skor} (%${s.olasilik})`).join(", ")}</dd>
+      <dt>Yöntem</dt><dd style="color:var(--muted);font-size:13px">${esc(m.yontem)}</dd></dl>
+      <div class="pbar" style="margin-top:12px;height:8px"><i style="width:${p["1"]}%;background:var(--home)"></i><i style="width:${p["X"]}%;background:var(--draw)"></i><i style="width:${p["2"]}%;background:var(--away)"></i></div>
+      <div class="plab"><span>1 · %${p["1"]}</span><span>X · %${p["X"]}</span><span>2 · %${p["2"]}</span></div>
+    </div>
+
+    <div class="sec"><h3>Form & İstatistikler (son 15)</h3>
+      <div class="seg"><button class="on" data-f="genel">Genel</button><button data-f="ev/dep">Ev / Deplasman</button></div>
+      <div id="formT">${formTable(m, "genel")}</div></div>
+
+    <div class="sec"><h3>Hakem & Kart Analizi</h3>
+      ${m.kart?.hakem ? `<dl class="kv" style="margin-bottom:8px"><dt>Hakem</dt><dd>${esc(m.kart.hakem.ad)}</dd><dt>Maç ort.</dt><dd>${v(m.kart.hakem.kart_ort)} kart (${m.kart.hakem.mac} maç)</dd><dt>Eğilim</dt><dd>${esc(m.kart.hakem.egilim)}</dd></dl>` : `<p class="k" style="margin-bottom:8px;color:var(--muted);font-size:13px">Hakem verisi yok.</p>`}
+      ${lineTable(m.kart, "kart")}
+      ${m.kart?.not ? `<p style="color:var(--muted);font-size:12px;margin-top:6px">${esc(m.kart.not)}</p>` : ""}
+      ${recRow("Kart önerisi", o.kart)}</div>
+
+    <div class="sec"><h3>Şut & Korner Analizi</h3>
+      <p class="k" style="color:var(--muted);font-size:13px;margin-bottom:4px">Toplam şut</p>${lineTable(m.sut, "şut")}
+      <p class="k" style="color:var(--muted);font-size:13px;margin:12px 0 4px">İsabetli şut</p>${lineTable(m.isabetli_sut, "isabetli şut")}
+      <p class="k" style="color:var(--muted);font-size:13px;margin:12px 0 4px">Korner</p>${lineTable(m.korner, "korner")}
+      ${recRow("Korner önerisi", o.korner)}</div>
+
+    <div class="sec"><h3>Oran Değerlendirmesi</h3>
+      ${m.oranlar.length ? `<table><tr><th>Pazar</th><th>Oran</th><th>Piyasa</th><th>Model</th><th>Değer</th></tr>
+      ${m.oranlar.filter(x => x.oran).map(x => `<tr><td>${esc(x.pazar)}</td><td>${x.oran}</td><td>%${x.piyasa}</td><td>%${x.model}</td><td class="${x.durum === "Değerli" ? "good" : x.durum === "Değersiz" ? "bad" : ""}">${x.deger > 0 ? "+" : ""}${x.deger}%</td></tr>`).join("")}</table>
+      <p style="color:var(--muted);font-size:12px;margin-top:8px">${m.oranlar.filter(x => x.marj !== undefined).map(x => esc(x.pazar) + ": %" + x.marj).join(" · ")}. Değer = model olasılığı × oran − 1. +%4 ve üstü değerli sayılır.</p>`
+      : `<p style="color:var(--muted);font-size:13px">Oran verisi yok. Aşağıdaki adil oranlardan yüksek bir oran bulursan değerli demektir.</p>`}
+      <table style="margin-top:10px"><tr><th>Pazar</th><th>Olasılık</th><th>Adil oran</th></tr>
+      ${["1", "X", "2", "1X", "X2", "12", "KG Var", "KG Yok", "1.5 Üst", "2.5 Üst", "2.5 Alt", "3.5 Üst", "3.5 Alt"].map(k => `<tr><td>${k.length <= 2 ? "MS " + k : k}</td><td>%${p[k]}</td><td>${(100 / p[k]).toFixed(2)}</td></tr>`).join("")}
+      <tr><td>İY 0.5 Üst</td><td>%${m.ilk_yari_olasilik["0.5 Üst"]}</td><td>${(100 / m.ilk_yari_olasilik["0.5 Üst"]).toFixed(2)}</td></tr>
+      <tr><td>İY 1.5 Üst</td><td>%${m.ilk_yari_olasilik["1.5 Üst"]}</td><td>${(100 / m.ilk_yari_olasilik["1.5 Üst"]).toFixed(2)}</td></tr></table></div>
+
+    <div class="sec"><h3>Maç Formatı</h3><ul class="notes">${m.format_notlari.map(n => `<li>${esc(n)}</li>`).join("")}</ul></div>
+
+    <div class="sec"><h3>Bahis Önerileri</h3>
+      ${recRow("Maç sonucu", o.mac_sonucu)}
+      ${recRow("İlk yarı sonucu", o.ilk_yari.sonuc)}
+      ${recRow("İlk yarı gol", o.ilk_yari.gol)}
+      ${recRow("Toplam gol", o.toplam_gol)}
+      ${recRow("Karşılıklı gol", o.kg)}
+      ${recRow("Korner", o.korner)}
+      ${recRow("Kart", o.kart)}
+      ${o.sut ? `<div class="rec"><div><div class="k">Şut beklentisi</div><div class="v">Toplam ${o.sut.toplam_sut} · İsabetli ${o.sut.isabetli || "–"}</div><div class="k">${esc(m.ev)} ${o.sut.ev} · ${esc(m.dep)} ${o.sut.dep}</div></div></div>` : ""}
+    </div>
+
+    <div class="sec best"><h3>En Güçlü 2-3 Bahis</h3>
+      ${m.en_degerli.map(b => `<div class="rec"><div><div class="v">${esc(b.bahis)}</div><div class="k">${esc(b.tip)}${b.oran ? " · oran " + b.oran + " · değer +" + b.deger + "%" : b.adil_oran ? " · adil oran " + b.adil_oran : ""}</div></div><div class="p">%${b.olasilik}<br>${riskTag(b.risk)}</div></div>`).join("") || `<p class="k">Öne çıkan bahis yok.</p>`}
+      ${(m.surpriz || []).length ? `<p style="color:var(--muted);font-size:12px;margin-top:8px">Sürpriz (düşük olasılık, değerli oran): ${m.surpriz.map(s => `${esc(s.bahis)} @${s.oran} (%${s.olasilik})`).join(", ")}. Yüksek risk.</p>` : ""}
+    </div>
+
+    <div class="sec"><h3>Genel Yorum & Risk</h3>
+      <div class="chars">${m.karakter.map(c => `<span>${esc(c)}</span>`).join("")}</div>
+      ${m.riskler.length ? `<ul class="notes" style="margin-top:6px">${m.riskler.map(r => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
+      ${m.veri_notlari.length ? `<p style="color:var(--muted);font-size:12px;margin-top:10px">Veri notları:</p><ul class="notes">${m.veri_notlari.map(r => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
+    </div>
+
+    <div class="sec"><h3>Son maçlar</h3>
+      <table><tr><th>${esc(m.ev)}</th><th></th><th></th></tr>
+      ${(m.form.ev?.genel?.son_maclar || []).map(x => `<tr><td>${x.tarih} ${x.yer === "E" ? "(E)" : "(D)"} ${esc(x.rakip)}</td><td></td><td>${x.skor}</td></tr>`).join("")}
+      <tr><th>${esc(m.dep)}</th><th></th><th></th></tr>
+      ${(m.form.dep?.genel?.son_maclar || []).map(x => `<tr><td>${x.tarih} ${x.yer === "E" ? "(E)" : "(D)"} ${esc(x.rakip)}</td><td></td><td>${x.skor}</td></tr>`).join("")}
+      </table></div>
+    <div class="foot">Olasılıklar istatistik modelinden gelir, kesinlik içermez.</div>
+  </div>`;
+  d.classList.add("on");
+  d.scrollTop = 0;
+  document.body.style.overflow = "hidden";
+  $("#back").onclick = () => history.length > 1 ? history.back() : (location.hash = "");
+  d.querySelectorAll(".seg button").forEach(b => b.onclick = () => {
+    d.querySelectorAll(".seg button").forEach(x => x.classList.toggle("on", x === b));
+    $("#formT").innerHTML = formTable(m, b.dataset.f);
+  });
+}
+
+function route() {
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (h.startsWith("m=") && DATA) showDetail(h.slice(2));
+  else { $("#detail").classList.remove("on"); document.body.style.overflow = ""; }
+}
+window.addEventListener("hashchange", route);
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  view = t.dataset.v;
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === t));
+  render();
+});
+load();
+</script>
+</body>
+</html>

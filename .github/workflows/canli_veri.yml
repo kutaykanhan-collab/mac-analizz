@@ -1,5 +1,8 @@
-name: Kaynak testi
-on: workflow_dispatch
+name: Canlı model verisi
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 3 * * 1"   # her pazartesi 06:41, yeni biten maçları ekler
 permissions:
   contents: write
 jobs:
@@ -11,10 +14,11 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install requests
-      - run: python src/probe.py
+        timeout-minutes: 5
+      - run: python src/live_collect.py --days 45 --max 1200
       - run: |
           git config user.name "analiz-bot"
           git config user.email "analiz-bot@users.noreply.github.com"
-          git add -f docs/data/probe.json data/raw/probe_* || true
-          git commit -m "Kaynak testi" || true
+          git add -f data/live || true
+          git commit -m "Canlı model verisi" || true
           git pull --rebase origin main && git push

@@ -111,3 +111,10 @@ DERBIES = [
     ({"Club Brugge", "Cercle Brugge"}, "Brugge derbisi"),
     ({"Anderlecht", "Club Brugge"}, "Belçika klasiği"),
 ]
+
+# FotMob lig kimliği (primaryId) -> football-data lig kodu. Canlı model ve canlı sekme için.
+FOTMOB_LEAGUES = {
+    71: "T1", 47: "E0", 48: "E1", 87: "SP1", 140: "SP2", 55: "I1", 86: "I2",
+    54: "D1", 146: "D2", 53: "F1", 110: "F2", 57: "N1", 61: "P1", 40: "B1",
+    135: "G1", 64: "SC0",
+}

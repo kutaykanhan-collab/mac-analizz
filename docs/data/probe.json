@@ -219,8 +219,8 @@
   },
   "mackolik_livedata": {
    "durum": 200,
-   "boyut": 81442,
-   "bas": "{\"e\":[[6862517,4550054,0,200,1337,\"AFC Şampiyonlar Ligi 2 Grup H\",\"AFCŞL2\",8074,\"Gangwon\",42676,\"Kuching FA\",\"13:47\",4,0,1,0,0,0,\"IY\"],[6862516,4550042,0,200,1336,\"AFC Şampiyonlar Ligi 2 Grup G\",\"AFCŞ",
+   "boyut": 81430,
+   "bas": "{\"e\":[[6862518,4574248,0,1,3919,\"Türkiye Kupa 3.Tur\",\"TÜK\",589,\"Bitlis Özgüzeldere\",570,\"Kayserispor\",\"13:59\",1,1,1,0,0,0,\"29'\"],[6862517,4550054,0,200,1337,\"AFC Şampiyonlar Ligi 2 Grup H\",\"AFCŞL2\",80",
    "kupa_gecer": true
   },
   "mackolik_iddaa": {

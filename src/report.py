@@ -4,7 +4,7 @@ import math
 import numpy as np
 import pandas as pd
 
-from config import DERBIES, DERBY_CARD_FACTOR, FORM_N, LEAGUE_STRENGTH, LEAGUES, MODEL_WEIGHT, OTHER_LEAGUE_STRENGTH, VALUE_EDGE
+from config import DERBIES, DERBY_CARD_FACTOR, FORM_N, LEAGUE_STRENGTH, LEAGUES, LOWER_TIER_GAP, MODEL_WEIGHT, OTHER_LEAGUE_STRENGTH, VALUE_EDGE
 from model import CountModel, GoalModel, fit_lambdas, fit_league_strength, goal_markets, score_matrix
 from names import ALIASES_ELO, norm
 from stats import team_form
@@ -200,8 +200,12 @@ def analyze(ctx: Context, fx: dict):
         U = getattr(ctx, "uefa", None) or {"c": None, "H": 0.25, "S": LEAGUE_STRENGTH,
                                             "S_other": OTHER_LEAGUE_STRENGTH, "n": 0}
         c = U["c"] if U["c"] is not None else np.mean([g.mu for g in (g_h, g_a) if g])
-        S_h = U["S"].get(lg_h, U["S_other"]) if g_h else U["S_other"]
-        S_a = U["S"].get(lg_a, U["S_other"]) if g_a else U["S_other"]
+        S_other = U["S_other"]
+        if fx["comp_type"] == "kupa":
+            # Ulusal kupada bilinmeyen rakip genelde alt lig takımıdır
+            S_other = U["S"].get(lg_h or lg_a, -0.3) - LOWER_TIER_GAP
+        S_h = U["S"].get(lg_h, S_other) if g_h else S_other
+        S_a = U["S"].get(lg_a, S_other) if g_a else S_other
         att_h = g_h.att.get(home, 0) if g_h else 0.0
         de_h = g_h.de.get(home, 0) if g_h else 0.0
         att_a = g_a.att.get(away, 0) if g_a else 0.0
@@ -212,8 +216,11 @@ def analyze(ctx: Context, fx: dict):
         method = f"Ligler arası gol modeli ({src})"
         if not (g_h and g_a):
             unknown = away if g_h else home
-            notes.append(f"{unknown} takip edilen liglerde değil; gücü o liglerden gelen UEFA takımlarının "
-                         "ortalaması kabul edildi. Bu maçta tahmin güveni düşük.")
+            if fx["comp_type"] == "kupa":
+                notes.append(f"{unknown} alt lig takımı; verisi yok, gücü alt lig ortalaması kabul edildi.")
+            else:
+                notes.append(f"{unknown} takip edilen liglerde değil; gücü o liglerden gelen UEFA takımlarının "
+                             "ortalaması kabul edildi.")
         if elo_h and elo_a:
             # Elo varsa güç farkını Elo belirler, toplam gol modelden gelir
             dr = elo_h - elo_a + 60
@@ -234,6 +241,12 @@ def analyze(ctx: Context, fx: dict):
         "2.5 Üst": get_odds(row, ["Avg>2.5", "B365>2.5", "P>2.5", "Max>2.5"]),
         "2.5 Alt": get_odds(row, ["Avg<2.5", "B365<2.5", "P<2.5", "Max<2.5"]),
     }
+    idd = fx.get("iddaa") or {}
+    iddaa = {"1": idd.get("IddaaH"), "X": idd.get("IddaaD"), "2": idd.get("IddaaA")}
+    market_src = "piyasa"
+    if not all(odds[k] for k in ("1", "X", "2")) and all(iddaa.values()):
+        odds.update(iddaa)  # Avrupa oranı yoksa iddaa oranı kullanılır
+        market_src = "iddaa oranı"
     implied, margins = {}, {}
     for group in (("1", "X", "2"), ("2.5 Üst", "2.5 Alt")):
         if all(odds[k] for k in group):
@@ -250,7 +263,7 @@ def analyze(ctx: Context, fx: dict):
         sup = w * (mk_model["1"] - mk_model["2"]) + (1 - w) * (implied["1"] - implied["2"])
         o25 = (w * mk_model["2.5 Üst"] + (1 - w) * implied["2.5 Üst"]) if "2.5 Üst" in implied else None
         lh, la = fit_lambdas(lh, la, sup, o25, rho)
-        method += f" · %{round(100 * w)} model + %{round(100 * (1 - w))} piyasa"
+        method += f" · %{round(100 * w)} model + %{round(100 * (1 - w))} {market_src}"
     m = score_matrix(lh, la, rho)
     mk = goal_markets(m)
     mh = score_matrix(lh * ht_h, la * ht_a, 0.0)
@@ -331,12 +344,13 @@ def analyze(ctx: Context, fx: dict):
     # ---- Oran değerlendirmesi --------------------------------------------
     odds_eval = []
     for k in ("1", "X", "2", "2.5 Üst", "2.5 Alt"):
-        if k not in implied:
+        if k not in implied or odds[k] <= 1.011:  # 1.01 = iddaa'nın vermediği favori oranı
             continue
         edge = mk_model[k] * odds[k] - 1
         odds_eval.append({
             "pazar": "MS " + k if k in ("1", "X", "2") else k,
-            "oran": odds[k], "piyasa": pct(implied[k]), "model": pct(mk_model[k]), "nihai": pct(mk[k]),
+            "oran": odds[k], "iddaa": iddaa.get(k), "piyasa": pct(implied[k]), "model": pct(mk_model[k]),
+            "nihai": pct(mk[k]),
             "fark": round(100 * (mk_model[k] - implied[k]), 1), "deger": round(100 * edge, 1),
             "durum": "Model yüksek görüyor" if edge >= VALUE_EDGE else ("Uyumlu" if edge > -0.04 else "Model düşük görüyor"),
         })
@@ -483,6 +497,7 @@ def analyze(ctx: Context, fx: dict):
         "id": f"{fx['date']}_{home}_{away}".replace(" ", "_"),
         "tarih": fx["date"], "saat": fx.get("time"),
         "ev": home, "dep": away,
+        "ev_ad": fx.get("label_home") or home, "dep_ad": fx.get("label_away") or away,
         "turnuva": fx["comp_name"], "tur": fx["comp_type"],
         "format": {"lig": "Lig maçı", "kupa": "Ulusal kupa", "avrupa": "UEFA Avrupa kupası"}[fx["comp_type"]],
         "derbi": {"var": is_derby, "neden": derby_why},

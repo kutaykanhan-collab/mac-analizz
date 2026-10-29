@@ -15,7 +15,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from config import DAYS_AHEAD, LEAGUES, TIMEZONE, season_codes  # noqa: E402
-from fetch import load_elo_ratings, load_fixtures, load_results, load_uefa  # noqa: E402
+from fetch import load_elo_ratings, load_fixtures, load_mackolik, load_results, load_uefa  # noqa: E402
 from names import build_matcher  # noqa: E402
 from report import Context, analyze  # noqa: E402
 
@@ -49,6 +49,7 @@ def main():
     fixtures = load_fixtures(offline=args.offline)
     uefa = load_uefa(today, offline=args.offline)
     elo = load_elo_ratings(today, offline=args.offline)
+    mack = load_mackolik(days, offline=args.offline)
     if results.empty:
         print("HATA: maç verisi yok")
         sys.exit(1)
@@ -73,6 +74,42 @@ def main():
             "comp_type": "lig", "comp_name": LEAGUES[r.Div][0], "div": r.Div,
             "odds_row": r, "referee": r.get("Referee") if isinstance(r.get("Referee"), str) else None,
         })
+        seen.add((h, a))
+    by_pair = {(fx["home"], fx["away"]): fx for fx in bulletin}
+
+    # Maçkolik bülteni: iddaa oranlarını ekle, eksik lig maçlarını ve kupaları al
+    no_data = []
+    for mm in mack:
+        if mm["date"] not in days:
+            continue
+        h, a = match(mm["home"]), match(mm["away"])
+        if (h, a) in by_pair:
+            by_pair[(h, a)].update({"iddaa": mm["odds"], "label_home": mm["home"], "label_away": mm["away"]})
+            continue
+        lg_h, lg_a = ctx.team_league.get(h), ctx.team_league.get(a)
+        title = f"{mm['country']} {mm['league']}"
+        if not (h or a):
+            no_data.append({"mac": f"{mm['home']} - {mm['away']}", "turnuva": title, "saat": mm["time"]})
+            continue
+        if mm["uefa"]:
+            ctype = "avrupa"
+        elif mm["cup"] or "Kupa" in mm["league"]:
+            ctype = "kupa"
+        elif h and a and lg_h == lg_a:
+            ctype = "lig"
+        else:
+            no_data.append({"mac": f"{mm['home']} - {mm['away']}", "turnuva": title, "saat": mm["time"]})
+            continue
+        fx = {
+            "date": mm["date"].isoformat(), "time": mm["time"],
+            "home": h or mm["home"], "away": a or mm["away"],
+            "comp_type": ctype, "comp_name": LEAGUES[lg_h][0] if ctype == "lig" else title,
+            "div": lg_h if ctype == "lig" else None,
+            "odds_row": None, "iddaa": mm["odds"], "referee": None,
+            "country": mm["code"], "label_home": mm["home"], "label_away": mm["away"],
+        }
+        bulletin.append(fx)
+        by_pair[(h, a)] = fx
         seen.add((h, a))
 
     # UEFA kupa maçları (en az bir takım takip ettiğimiz liglerden olmalı)
@@ -125,6 +162,7 @@ def main():
         "lig_gucu": {k: round(v, 2) for k, v in ctx.uefa["S"].items()},
         "diger_lig_gucu": round(ctx.uefa["S_other"], 2),
         "atlanan_maclar": skipped,
+        "mackolik_mac": len(mack),
     }
     out = {
         "kaynak": diag,
@@ -133,6 +171,7 @@ def main():
         "mac_sayisi": len(reports),
         "atlanan": len(skipped),
         "maclar": reports,
+        "veri_yok": no_data,
     }
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "archive").mkdir(exist_ok=True)

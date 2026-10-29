@@ -41,7 +41,7 @@ h1 span{color:var(--accent)}
 .meta{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;gap:8px}
 .meta b{color:var(--text);font-weight:600}
 .teams{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;margin:8px 0}
-.teams .t{min-width:0;overflow-wrap:anywhere;font:700 19px/1.1 "Barlow Condensed",sans-serif}
+.teams .t{min-width:0;overflow-wrap:break-word;hyphens:auto;font:700 clamp(15px,4.4vw,19px)/1.1 "Barlow Condensed",sans-serif}
 .teams .t.r{text-align:right}
 .teams .xg{font-size:12px;color:var(--muted);text-align:center;white-space:nowrap}
 .pbar{display:flex;height:6px;border-radius:4px;overflow:hidden;gap:2px}
@@ -145,7 +145,7 @@ function filtered() {
     (F.lig === "Tümü" || m.turnuva === F.lig) &&
     (!F.sadeceDeger || hasValue(m)) &&
     (!F.derbi || m.derbi.var) &&
-    (!q || (m.ev + " " + m.dep + " " + m.turnuva).toLowerCase().includes(q)));
+    (!q || ((m.ev_ad || m.ev) + " " + (m.dep_ad || m.dep) + " " + m.ev + " " + m.dep + " " + m.turnuva).toLowerCase().includes(q)));
 }
 
 function render() {
@@ -167,11 +167,15 @@ function render() {
     const p = m.olasiliklar, b = (m.en_degerli || [])[0];
     html += `<div class="card" data-id="${esc(m.id)}">
       <div class="meta"><span>${esc(m.turnuva)}${m.derbi.var ? '<span class="tag derbi">Derbi</span>' : ""}${hasValue(m) ? '<span class="tag val">Fark</span>' : ""}</span><b>${m.saat || "Saat ?"}</b></div>
-      <div class="teams"><div class="t">${esc(m.ev)}</div><div class="xg">xG ${m.beklenen_gol.ev} – ${m.beklenen_gol.dep}</div><div class="t r">${esc(m.dep)}</div></div>
+      <div class="teams"><div class="t">${esc(m.ev_ad || m.ev)}</div><div class="xg">xG<br>${m.beklenen_gol.ev} – ${m.beklenen_gol.dep}</div><div class="t r">${esc(m.dep_ad || m.dep)}</div></div>
       <div class="pbar"><i style="width:${p["1"]}%;background:var(--home)"></i><i style="width:${p["X"]}%;background:var(--draw)"></i><i style="width:${p["2"]}%;background:var(--away)"></i></div>
       <div class="plab"><span>1 · %${p["1"]}</span><span>X · %${p["X"]}</span><span>2 · %${p["2"]}</span></div>
       <div class="picks">${(m.en_degerli || []).map(x => `<span class="pick"><span class="d" style="background:${riskColor(x.risk)}"></span>${esc(x.bahis)} · %${x.olasilik}</span>`).join("")}</div>
     </div>`;
+  }
+  if ((DATA.veri_yok || []).length && !F.q && F.lig === "Tümü" && !F.sadeceDeger && !F.derbi) {
+    html += `<details class="sec" style="margin-top:18px"><summary style="cursor:pointer;color:var(--muted);font-size:13px">Analiz edilemeyen ${DATA.veri_yok.length} maç (iki takımın da verisi yok)</summary>
+      <ul class="notes" style="margin-top:8px">${DATA.veri_yok.map(x => `<li>${esc(x.saat || "")} ${esc(x.mac)} <span style="opacity:.7">· ${esc(x.turnuva)}</span></li>`).join("")}</ul></details>`;
   }
   html += `<div class="foot">${DATA.mac_sayisi || 0} maç · istatistik modeli + piyasa · kazanç garantisi yoktur, sorumlu oyna.</div>`;
   main.innerHTML = html;
@@ -243,9 +247,9 @@ function showDetail(id) {
   const o = m.oneriler, p = m.olasiliklar;
   const pos = Object.entries(m.puan_durumu || {}).map(([t, s]) => `${esc(t)} ${s.sira}. (${s.puan} p)`).join(" · ");
   let formMode = "genel";
-  d.innerHTML = `<div class="dhead"><button class="back" id="back">← Geri</button><div class="ttl">${esc(m.ev)} – ${esc(m.dep)}</div></div>
+  d.innerHTML = `<div class="dhead"><button class="back" id="back">← Geri</button><div class="ttl">${esc(m.ev_ad || m.ev)} – ${esc(m.dep_ad || m.dep)}</div></div>
   <div class="wrap">
-    <div class="hero"><h2>${esc(m.ev)}<em>vs</em>${esc(m.dep)}</h2>
+    <div class="hero"><h2>${esc(m.ev_ad || m.ev)}<em>vs</em>${esc(m.dep_ad || m.dep)}</h2>
       <div class="sub">${esc(m.turnuva)} · ${dayName(m.tarih)} ${m.saat || ""}</div></div>
 
     <div class="sec"><h3>Maç Bilgileri</h3><dl class="kv">
@@ -276,8 +280,8 @@ function showDetail(id) {
       ${recRow("Korner önerisi", o.korner)}</div>
 
     <div class="sec"><h3>Oran Değerlendirmesi</h3>
-      ${m.oranlar.length ? `<table><tr><th>Pazar</th><th>Oran</th><th>Piyasa</th><th>Model</th><th>Nihai</th></tr>
-      ${m.oranlar.filter(x => x.oran).map(x => `<tr><td>${esc(x.pazar)}</td><td>${x.oran}</td><td>%${x.piyasa}</td><td class="${x.durum === "Model yüksek görüyor" ? "good" : x.durum === "Model düşük görüyor" ? "bad" : ""}">%${x.model}</td><td><b>%${x.nihai}</b></td></tr>`).join("")}</table>
+      ${m.oranlar.length ? `<table><tr><th>Pazar</th><th>Oran</th><th>İddaa</th><th>Piyasa</th><th>Model</th><th>Nihai</th></tr>
+      ${m.oranlar.filter(x => x.oran).map(x => `<tr><td>${esc(x.pazar)}</td><td>${x.oran}</td><td>${v(x.iddaa)}</td><td>%${x.piyasa}</td><td class="${x.durum === "Model yüksek görüyor" ? "good" : x.durum === "Model düşük görüyor" ? "bad" : ""}">%${x.model}</td><td><b>%${x.nihai}</b></td></tr>`).join("")}</table>
       <p style="color:var(--muted);font-size:12px;margin-top:8px">Piyasa: oranlardan çıkan olasılık (${m.oranlar.filter(x => x.marj !== undefined).map(x => "marj %" + x.marj).join(", ")}). Model: sadece istatistik. Nihai: %25 model + %75 piyasa; geçmiş testte en isabetli karışım bu. Yeşil: model piyasadan yüksek görüyor, kırmızı: düşük görüyor.</p>`
       : `<p style="color:var(--muted);font-size:13px">Oran verisi yok. Aşağıdaki adil oranlardan yüksek bir oran bulursan değerli demektir.</p>`}
       <table style="margin-top:10px"><tr><th>Pazar</th><th>Olasılık</th><th>Adil oran</th></tr>

@@ -49,6 +49,21 @@ ALIASES = {
     "B. Mönchengladbach": "M'gladbach", "Ath. Bilbao": "Ath Bilbao", "Athletic": "Ath Bilbao",
     "Spurs": "Tottenham", "Newcastle Utd": "Newcastle", "Nott'm Forest": "Nott'm Forest",
     "PAOK": "PAOK", "Başakşehir FK": "Buyuksehyr", "Samsunspor": "Samsunspor",
+    "Sporting Braga": "Sp Braga", "Sporting Gijon": "Sp Gijon", "Sporting Gijón": "Sp Gijon",
+    "Racing Santander": "Santander", "Deportivo La Coruna": "La Coruna", "Deportivo": "La Coruna",
+    "CD Castellon": "Castellon", "FC Andorra": "Andorra", "Real Oviedo": "Oviedo",
+    "Real Valladolid": "Valladolid", "R. Valladolid": "Valladolid", "Real Zaragoza": "Zaragoza",
+    "UD Las Palmas": "Las Palmas", "CD Leganes": "Leganes", "Cadiz CF": "Cadiz", "Granada CF": "Granada",
+    "Fortuna Sittard": "For Sittard", "ADO Den Haag": "Den Haag", "PEC Zwolle": "Zwolle",
+    "Estrela Amadora": "Estrela", "Casa Pia AC": "Casa Pia", "CD Nacional": "Nacional",
+    "Çaykur Rizespor": "Rizespor", "Gaziantep FK": "Gaziantep", "Fatih Karagümrük": "Karagumruk",
+    "Eyüpspor": "Eyupspor", "Amed Sportif Faaliyetler": "Amedspor", "Amed SFK": "Amedspor",
+    "Çorum FK": "Corum", "Erzurumspor FK": "Erzurumspor", "Gençlerbirliği": "Genclerbirligi",
+    "Greuther Fürth": "Greuther Furth", "1. FC Nürnberg": "Nurnberg", "Hertha BSC": "Hertha",
+    "Hannover 96": "Hannover", "1. FC Kaiserslautern": "Kaiserslautern", "Eintracht Braunschweig": "Braunschweig",
+    "Arminia Bielefeld": "Bielefeld", "VfL Bochum": "Bochum", "Dynamo Dresden": "Dresden",
+    "Hellas Verona": "Verona", "Pau": "Pau FC", "Red Star FC": "Red Star", "Queens Park Rangers": "QPR",
+    "West Bromwich Albion": "West Brom", "Sheffield Utd": "Sheffield United",
 }
 
 # football-data adı -> ClubElo adı (Elo puanı aramak için)

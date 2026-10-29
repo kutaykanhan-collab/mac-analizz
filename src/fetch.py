@@ -6,10 +6,11 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-from config import BASE_URL, CLUBELO_RATINGS_URL, FIXTURES_URL, LEAGUES, UEFA_FEED_URLS, UEFA_FEEDS
+from config import BASE_URL, CLUBELO_RATINGS_URL, FIXTURES_URL, LEAGUES, MACKOLIK_URL, UEFA_FEED_URLS, UEFA_FEEDS
 
 RAW = Path(__file__).resolve().parent.parent / "data" / "raw"
-HEADERS = {"User-Agent": "mac-analiz/1.0 (kisisel istatistik projesi)"}
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
+           "Accept": "application/json, text/plain, */*"}
 
 
 def _get(url, tries=3):
@@ -134,3 +135,79 @@ def load_elo_ratings(today, offline=False):
     if not {"Club", "Elo"}.issubset(df.columns):
         return {}
     return dict(zip(df.Club, pd.to_numeric(df.Elo, errors="coerce")))
+
+
+# Maçkolik ülke adı -> izlenen ülke kodu
+MACKOLIK_COUNTRIES = {
+    "Türkiye": "TUR", "İngiltere": "ENG", "İspanya": "ESP", "İtalya": "ITA", "Almanya": "GER",
+    "Fransa": "FRA", "Hollanda": "NED", "Portekiz": "POR", "Belçika": "BEL", "Yunanistan": "GRE",
+    "İskoçya": "SCO",
+}
+UEFA_WORDS = ("Şampiyonlar Ligi", "Avrupa Ligi", "Konferans Ligi")
+SKIP_WORDS = ("Kadın", "U17", "U19", "U20", "U21", "U23", "Gençler", "Genç", "Rezerv", "Hazırlık", "Mladinska")
+
+
+def _f(x):
+    try:
+        v = float(x)
+        return v if v > 1.0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _odds3(h, d, a):
+    """iddaa 1-X-2. Eksik ya da tutarsızsa (aşırı favori maçlarda olur) boş döner."""
+    o = [_f(h), _f(d), _f(a)]
+    # Aşırı favori maçlarda iddaa favorinin oranını vermez (ör. 17.35 / 12.45 / -).
+    # Diğer iki oran yüksekse eksik oran 1.01 kabul edilir: favori ~%85-90.
+    if o.count(None) == 1 and all(x >= 5 for x in o if x):
+        o = [x or 1.01 for x in o]
+    if None in o or not (1.0 < sum(1 / x for x in o) < 1.4):
+        return {}
+    return {"IddaaH": o[0], "IddaaD": o[1], "IddaaA": o[2]}
+
+
+def load_mackolik(days, offline=False):
+    """Maçkolik bülteni (iddaa 1-X-2 oranlarıyla). Sadece futbol ve izlenen ülkeler + UEFA.
+    Dönen liste: dict(id, date, time, home, away, country, league, cup, code, odds)"""
+    import json
+    out, seen = [], set()
+    for d in sorted(days):
+        path = RAW / f"mackolik_{d.isoformat()}.json"
+        if not offline:
+            raw = _get(MACKOLIK_URL.format(date=d.strftime("%d/%m/%Y")))
+            if raw and raw.lstrip()[:1] == b"{":
+                path.write_bytes(raw)
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_bytes().decode("utf-8"))
+        except Exception:
+            continue
+        for m in data.get("m", []):
+            try:
+                if m[0] in seen or len(m) < 37 or m[23] != 1:  # 23: spor (1 = futbol)
+                    continue
+                info = m[36]
+                country, league, cup = info[1], info[3], info[7]
+                full = f"{country} {league}"
+                if any(w in full for w in SKIP_WORDS) or "(K)" in str(m[2]):
+                    continue
+                is_uefa = (country.startswith("UEFA") or country.startswith("Avrupa")) and \
+                    any(w in full for w in UEFA_WORDS)
+                if country not in MACKOLIK_COUNTRIES and not is_uefa:
+                    continue
+                dd = pd.to_datetime(m[35], dayfirst=True, errors="coerce")
+                if pd.isna(dd):
+                    continue
+                seen.add(m[0])
+                out.append({
+                    "id": m[0], "date": dd.date(), "time": m[16] or None,
+                    "home": m[2], "away": m[4], "status": m[5],
+                    "country": country, "league": league, "cup": int(cup or 0), "uefa": is_uefa,
+                    "code": MACKOLIK_COUNTRIES.get(country),
+                    "odds": _odds3(m[18], m[19], m[20]),
+                })
+            except (IndexError, TypeError):
+                continue
+    return out

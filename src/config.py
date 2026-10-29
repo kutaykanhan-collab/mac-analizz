@@ -30,6 +30,7 @@ COUNTRY_TR = {
 
 BASE_URL = "https://www.football-data.co.uk/mmz4281/{season}/{code}.csv"
 FIXTURES_URL = "https://www.football-data.co.uk/fixtures.csv"
+MACKOLIK_URL = "https://vd.mackolik.com/livedata?date={date}"  # günlük bülten + iddaa oranları
 CLUBELO_RATINGS_URL = "http://api.clubelo.com/{date}"
 UEFA_FEEDS = {  # fixturedownload.com ücretsiz fikstür akışı
     "UEFA Şampiyonlar Ligi": "champions-league-{y}",
@@ -46,6 +47,7 @@ LEAGUE_STRENGTH = {
     "E1": -0.30, "SP2": -0.42, "I2": -0.45, "D2": -0.38, "F2": -0.47,
 }
 OTHER_LEAGUE_STRENGTH = -0.50  # takip dışı liglerden gelen UEFA rakipleri için varsayım
+LOWER_TIER_GAP = 0.50          # ulusal kupada alt lig rakibi: kendi ülkesinin ligi - bu kadar
 
 TIMEZONE = "Europe/Istanbul"
 DAYS_AHEAD = 1          # 0 = sadece bugün, 1 = bugün + yarın

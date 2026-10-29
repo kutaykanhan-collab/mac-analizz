@@ -4,8 +4,8 @@ import math
 import numpy as np
 import pandas as pd
 
-from config import DERBIES, DERBY_CARD_FACTOR, FORM_N, LEAGUE_STRENGTH, LEAGUES, MODEL_WEIGHT, VALUE_EDGE
-from model import CountModel, GoalModel, fit_lambdas, goal_markets, score_matrix
+from config import DERBIES, DERBY_CARD_FACTOR, FORM_N, LEAGUE_STRENGTH, LEAGUES, MODEL_WEIGHT, OTHER_LEAGUE_STRENGTH, VALUE_EDGE
+from model import CountModel, GoalModel, fit_lambdas, fit_league_strength, goal_markets, score_matrix
 from names import ALIASES_ELO, norm
 from stats import team_form
 
@@ -66,6 +66,34 @@ def _elo_lookup(self, name):
 
 
 Context.elo_of = _elo_lookup
+
+
+def _calibrate_uefa(self, uefa, match):
+    """Geçmiş UEFA sonuçlarıyla lig güçlerini ölçer. Az veri varsa önsel değerler kalır."""
+    self.uefa = {"c": None, "H": 0.25, "S": dict(LEAGUE_STRENGTH), "S_other": OTHER_LEAGUE_STRENGTH, "n": 0}
+    if uefa is None or uefa.empty or "HG" not in uefa.columns:
+        return
+    done = uefa.dropna(subset=["HG", "AG"])
+    done = done[done.Date < pd.Timestamp(self.ref_date, tz="UTC")]
+    games = []
+    for r in done.itertuples():
+        h, a = match(r.Home), match(r.Away)
+        lh, la = self.team_league.get(h), self.team_league.get(a)
+        if not (lh or la):
+            continue
+        gh_, ga_ = self.goal.get(lh), self.goal.get(la)
+        att_h = gh_.att.get(h, 0) if gh_ else 0.0
+        de_h = gh_.de.get(h, 0) if gh_ else 0.0
+        att_a = ga_.att.get(a, 0) if ga_ else 0.0
+        de_a = ga_.de.get(a, 0) if ga_ else 0.0
+        games.append((lh if gh_ else None, la if ga_ else None, att_h, de_h, att_a, de_a, float(r.HG), float(r.AG)))
+    if len(games) < 40:
+        return
+    c, H, S, so = fit_league_strength(games, LEAGUE_STRENGTH, OTHER_LEAGUE_STRENGTH)
+    self.uefa = {"c": c, "H": H, "S": S, "S_other": so, "n": len(games)}
+
+
+Context.calibrate_uefa = _calibrate_uefa
 
 
 def league_table(d):
@@ -169,30 +197,29 @@ def analyze(ctx: Context, fx: dict):
         # Ligler arası (UEFA) ya da rakibi takip dışı maç
         g0 = g_h or g_a
         rho, ht_h, ht_a = -0.05, g0.ht_h, g0.ht_a
-        home_adv = g0.home
-        if g_h and g_a:
-            s_h = LEAGUE_STRENGTH.get(lg_h, -0.3) / 2
-            s_a = LEAGUE_STRENGTH.get(lg_a, -0.3) / 2
-            mu = (g_h.mu + g_a.mu) / 2
-            home_adv = (g_h.home + g_a.home) / 2
-            lh = math.exp(mu + home_adv + g_h.att.get(home, 0) + s_h - g_a.de.get(away, 0) - s_a)
-            la = math.exp(mu + g_a.att.get(away, 0) + s_a - g_h.de.get(home, 0) - s_h)
-            method = "Lig gücü düzeltmeli gol modeli (ligler arası maç)"
-        else:
-            t, g = (home, g_h) if g_h else (away, g_a)
-            hh = g.home / 2
-            total = math.exp(g.mu + hh + g.att.get(t, 0)) + math.exp(g.mu + hh - g.de.get(t, 0))
-            lh = la = total / 2
-            notes.append("Rakip takımın lig verisi yok; toplam gol bilinen takımın profiline göre hesaplandı.")
-            method = "Elo gücü + bilinen takımın gol profili"
+        U = getattr(ctx, "uefa", None) or {"c": None, "H": 0.25, "S": LEAGUE_STRENGTH,
+                                            "S_other": OTHER_LEAGUE_STRENGTH, "n": 0}
+        c = U["c"] if U["c"] is not None else np.mean([g.mu for g in (g_h, g_a) if g])
+        S_h = U["S"].get(lg_h, U["S_other"]) if g_h else U["S_other"]
+        S_a = U["S"].get(lg_a, U["S_other"]) if g_a else U["S_other"]
+        att_h = g_h.att.get(home, 0) if g_h else 0.0
+        de_h = g_h.de.get(home, 0) if g_h else 0.0
+        att_a = g_a.att.get(away, 0) if g_a else 0.0
+        de_a = g_a.de.get(away, 0) if g_a else 0.0
+        lh = math.exp(c + U["H"] + att_h - de_a + S_h - S_a)
+        la = math.exp(c + att_a - de_h + S_a - S_h)
+        src = f"{U['n']} geçmiş UEFA maçından ölçülen lig güçleri" if U["n"] else "varsayılan lig güçleri"
+        method = f"Ligler arası gol modeli ({src})"
+        if not (g_h and g_a):
+            unknown = away if g_h else home
+            notes.append(f"{unknown} takip edilen liglerde değil; gücü o liglerden gelen UEFA takımlarının "
+                         "ortalaması kabul edildi. Bu maçta tahmin güveni düşük.")
         if elo_h and elo_a:
             # Elo varsa güç farkını Elo belirler, toplam gol modelden gelir
             dr = elo_h - elo_a + 60
             we = 1 / (10 ** (-dr / 400) + 1)
             lh, la = lambdas_from_expectancy(we, lh + la)
             method += " + ClubElo güç farkı"
-        elif not (g_h and g_a):
-            return None  # rakip hakkında hiç veri yok
     else:
         return None
 
@@ -445,6 +472,8 @@ def analyze(ctx: Context, fx: dict):
         risks.append("Derbilerde istatistik sapması fazladır, stake düşük tutulmalı.")
     if fx["comp_type"] != "lig":
         risks.append("Kupa maçlarında rotasyon modelin göremediği bir risk.")
+    if not (g_h and g_a):
+        risks.append("Rakip takımın verisi yok; olasılıklar kaba tahmin, stake düşük tutulmalı.")
     if f_h and f_h["genel"] and f_h["genel"]["n"] < 8 or f_a and f_a["genel"] and f_a["genel"]["n"] < 8:
         risks.append("Takımlardan birinin veri sayısı az (yeni yükselen olabilir); güven düşük.")
     if not implied:

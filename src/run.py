@@ -56,6 +56,8 @@ def main():
     print(f"[2/4] Modeller kuruluyor ({len(results)} maç)")
     ctx = Context(results, ref, elo)
     match = build_matcher(ctx.team_league)
+    ctx.calibrate_uefa(uefa, match)
+    print(f"      UEFA kalibrasyonu: {ctx.uefa['n']} maç")
 
     print("[3/4] Bülten hazırlanıyor")
     bulletin, seen = [], set()
@@ -119,6 +121,9 @@ def main():
         "uefa_gun_icinde": uefa_in_days,
         "uefa_eslesmeyen": unmatched,
         "elo_takim": len(elo),
+        "uefa_kalibrasyon_mac": ctx.uefa["n"],
+        "lig_gucu": {k: round(v, 2) for k, v in ctx.uefa["S"].items()},
+        "diger_lig_gucu": round(ctx.uefa["S_other"], 2),
         "atlanan_maclar": skipped,
     }
     out = {

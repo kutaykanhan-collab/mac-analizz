@@ -44,6 +44,11 @@ ALIASES = {
     "Basaksehir": "Buyuksehyr", "Istanbul": "Buyuksehyr",
     "Göztepe": "Goztep", "Goztepe": "Goztep", "Goeztepe": "Goztep", "Samsunspor": "Samsunspor",
     "Trabzonspor": "Trabzonspor",
+    "Atleti": "Ath Madrid", "Man Utd": "Man United", "B. Dortmund": "Dortmund", "Leipzig": "RB Leipzig",
+    "N.E.C.": "Nijmegen", "NEC Nijmegen": "Nijmegen", "Sint-Truidense": "St Truiden", "Sint-Truiden": "St Truiden",
+    "B. Mönchengladbach": "M'gladbach", "Ath. Bilbao": "Ath Bilbao", "Athletic": "Ath Bilbao",
+    "Spurs": "Tottenham", "Newcastle Utd": "Newcastle", "Nott'm Forest": "Nott'm Forest",
+    "PAOK": "PAOK", "Başakşehir FK": "Buyuksehyr", "Samsunspor": "Samsunspor",
 }
 
 # football-data adı -> ClubElo adı (Elo puanı aramak için)
@@ -80,10 +85,6 @@ def build_matcher(teams):
         n = norm(name)
         if n in by_norm:
             return by_norm[n]
-        # Biri diğerinin içinde geçiyorsa (ör. "galatasaray" ~ "galatasarayistanbul")
-        hits = [t for k, t in by_norm.items() if min(len(k), len(n)) >= 5 and (k in n or n in k)]
-        if len(hits) == 1:
-            return hits[0]
         hit = difflib.get_close_matches(n, list(by_norm), n=1, cutoff=0.84)
         return by_norm[hit[0]] if hit else None
 

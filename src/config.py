@@ -45,6 +45,7 @@ LEAGUE_STRENGTH = {
     "P1": -0.22, "N1": -0.22, "B1": -0.28, "T1": -0.28, "G1": -0.36, "SC0": -0.38,
     "E1": -0.30, "SP2": -0.42, "I2": -0.45, "D2": -0.38, "F2": -0.47,
 }
+OTHER_LEAGUE_STRENGTH = -0.50  # takip dışı liglerden gelen UEFA rakipleri için varsayım
 
 TIMEZONE = "Europe/Istanbul"
 DAYS_AHEAD = 1          # 0 = sadece bugün, 1 = bugün + yarın

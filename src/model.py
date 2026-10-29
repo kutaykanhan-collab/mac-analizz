@@ -281,3 +281,47 @@ def side_rates(model_list, team):
         if cm.ok and team in cm.f:
             return cm, cm.f[team], cm.a[team]
     return None, 1.0, 1.0
+
+
+# --------------------------------------------------------------------------
+# Ligler arası güç kalibrasyonu (geçmiş UEFA maç sonuçlarından)
+# --------------------------------------------------------------------------
+def fit_league_strength(games, prior, other_prior, prior_weight=4.0):
+    """games: [(lig_ev, lig_dep, att_ev, de_ev, att_dep, de_dep, gol_ev, gol_dep)]
+    lig None ise takım takip dışı liglerdendir ("DIGER").
+    Model: log(ev gol) = c + H + att_ev - de_dep + S_ev - S_dep
+           log(dep gol) = c + att_dep - de_ev + S_dep - S_ev
+    Premier Lig S=0 sabit. S değerleri önsel tahmine doğru çekilir (az veri olabilir).
+    Dönen: c, H, {lig: S}, S_diger"""
+    leagues = sorted({g[0] for g in games if g[0]} | {g[1] for g in games if g[1]} | set(prior)) 
+    leagues = [l for l in leagues if l != "E0"]
+    idx = {l: i for i, l in enumerate(leagues)}
+    n = len(leagues)
+    pri = np.array([prior.get(l, -0.3) for l in leagues] + [other_prior])
+    gh = np.array([g[6] for g in games], float)
+    ga = np.array([g[7] for g in games], float)
+    base_h = np.array([g[2] - g[5] for g in games])
+    base_a = np.array([g[4] - g[3] for g in games])
+
+    def sidx(l):
+        if l == "E0":
+            return -1
+        return idx[l] if l else n
+
+    ih = np.array([sidx(g[0]) for g in games])
+    ia = np.array([sidx(g[1]) for g in games])
+
+    def nll(p):
+        c, H, S = p[0], p[1], np.append(p[2:], 0.0)  # son eleman E0 (indeks -1) = 0
+        d = S[ih] - S[ia]
+        llh = c + H + base_h + d
+        lla = c + base_a - d
+        f = np.sum(np.exp(llh) - gh * llh + np.exp(lla) - ga * lla)
+        return f + prior_weight * np.sum((p[2:] - pri) ** 2)
+
+    x0 = np.concatenate([[0.2, 0.25], pri])
+    r = minimize(nll, x0, method="L-BFGS-B")
+    p = r.x
+    S = {l: float(p[2 + i]) for i, l in enumerate(leagues)}
+    S["E0"] = 0.0
+    return float(p[0]), float(p[1]), S, float(p[2 + n])

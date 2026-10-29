@@ -87,9 +87,9 @@ def load_uefa(today, offline=False):
     """UEFA kupa fikstürleri (fixturedownload.com). Dönen tablo:
     Date (UTC zaman damgası), Comp, Home, Away, Round"""
     import json
-    y = today.year if today.month >= 7 else today.year - 1
+    y0 = today.year if today.month >= 7 else today.year - 1
     rows = []
-    for comp, slug_t in UEFA_FEEDS.items():
+    for (comp, slug_t), y in [(c, yy) for yy in (y0, y0 - 1) for c in UEFA_FEEDS.items()]:
         slug = slug_t.format(y=y)
         path = RAW / f"uefa_{slug}.json"
         if not offline:
@@ -112,7 +112,8 @@ def load_uefa(today, offline=False):
             if not (d and h and a) or "To be" in str(h) or "TBD" in str(h):
                 continue
             rows.append({"Date": d, "Comp": comp, "Home": h, "Away": a,
-                         "Round": m.get("RoundNumber"), "Group": m.get("Group")})
+                         "Round": m.get("RoundNumber"), "Group": m.get("Group"),
+                         "HG": m.get("HomeTeamScore"), "AG": m.get("AwayTeamScore")})
     if not rows:
         return pd.DataFrame()
     df = pd.DataFrame(rows)
